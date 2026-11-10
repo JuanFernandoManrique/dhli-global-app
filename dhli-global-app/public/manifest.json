@@ -1,0 +1,16 @@
+{
+  "name": "DHLI Global - Monitor de Estrés Bovino",
+  "short_name": "DHLI Global",
+  "description": "Predicción de carga calórica y estrés térmico en ganado lechero",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#10B981",
+  "icons": [
+    {
+      "src": "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
