@@ -246,7 +246,7 @@ export default function HomePage() {
       `Diagnóstico: ${result.meaning}\n\n` +
       `Consulta el monitor en: https://dhli-global.org`;
 
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`);
   };
 
   const handleExportCSV = () => {
