@@ -1,24 +1,21 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { getWeatherData, reverseGeocode } from '../lib/weather-api';
 import { estimateBGT, calculateDHLI, calculateHLI_Beef, LivestockMode, DairyBreedType, BeefBreedType, YieldLevel } from '../lib/dhli-calculator';
-import { translations, Language } from '../lib/i18n';
+import { initialNewsFeed, NewsItem } from '../lib/news-feed';
 import AiChatbot from '../components/AiChatbot';
-import { Search, MapPin, Sliders, Thermometer, Wind, Droplets, Sun, Calendar, Clock, TrendingUp, Globe2, Map as MapIcon, ChevronRight, RotateCcw, Navigation, Languages, Trees, Download, Printer, Moon, DollarSign, MessageCircle, Settings, Beef, Milk } from 'lucide-react';
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar, LineChart, Line } from 'recharts';
+import { Search, MapPin, Sliders, Thermometer, Wind, Droplets, Sun, Calendar, Clock, TrendingUp, Globe2, Map as MapIcon, ChevronRight, RotateCcw, Navigation, Languages, Trees, Download, Printer, Moon, DollarSign, MessageCircle, Settings, Beef, Milk, BookOpen, Upload, ExternalLink, PlusCircle, Trash2, Image as ImageIcon, Sparkles } from 'lucide-react';
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar, LineChart, Line, ReferenceLine } from 'recharts';
 
 const EarthGlobe = dynamic(() => import('../components/EarthGlobe'), { ssr: false });
 const FarmMap = dynamic(() => import('../components/FarmMap'), { ssr: false });
 
 export default function HomePage() {
-  const [lang, setLang] = useState<Language>('es');
-  const t = translations[lang];
-
-  // Modo: Leche (DHLI) o Carne (HLI)
+  const [lang, setLang] = useState<'es' | 'en' | 'pt'>('es');
   const [livestockMode, setLivestockMode] = useState<LivestockMode>('dairy');
 
-  // Ubicación
+  // Ubicación y Coordenadas
   const [selectedCoords, setSelectedCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [placeName, setPlaceName] = useState<string>('Selecciona un punto en el globo terráqueo o busca un municipio');
   const [lat, setLat] = useState<number>(4.57);
@@ -28,7 +25,7 @@ export default function HomePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
 
-  // Configuración de Hato y Manejo
+  // Configuración del Hato
   const [hasShade, setHasShade] = useState<boolean>(false);
   const [dairyBreed, setDairyBreed] = useState<DairyBreedType>('holstein');
   const [beefBreed, setBeefBreed] = useState<BeefBreedType>('angus');
@@ -49,10 +46,14 @@ export default function HomePage() {
   const [manualMode, setManualMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [mapMode, setMapMode] = useState<'globe' | 'satellite'>('globe');
-  const [timeTab, setTimeTab] = useState<'24h' | '7d' | 'futuro'>('futuro');
 
-  // Series temporales
-  const [maxYearLimit, setMaxYearLimit] = useState<number>(2100);
+  // Filtro temporal en 4 clics
+  const [filterYear, setFilterYear] = useState<number>(2024);
+  const [filterMonth, setFilterMonth] = useState<number>(new Date().getMonth());
+  const [filterDay, setFilterDay] = useState<number>(new Date().getDate());
+  const [filterHour, setFilterHour] = useState<number>(14);
+
+  // Series
   const [yearsList, setYearsList] = useState<any[]>([]);
   const [selectedYear, setSelectedYear] = useState<any | null>(null);
   const [selectedMonth, setSelectedMonth] = useState<any | null>(null);
@@ -65,15 +66,47 @@ export default function HomePage() {
   const [ws, setWs] = useState(2);
   const [sr, setSr] = useState(400);
 
-  // BGT oficial (Dimiceli & Piltz, 2011)
-  const currentBGT = estimateBGT(temp, rh, ws, sr, hasShade);
+  // Panel de Noticias Administrable (Persistente en memoria)
+  const [newsList, setNewsList] = useState<NewsItem[]>(initialNewsFeed);
+  const [activeNewsIdx, setActiveNewsIdx] = useState(0);
+  const [showNewsAdminModal, setShowNewsAdminModal] = useState(false);
 
-  // Cálculo zootécnico oficial
+  // Formulario para nuevo anuncio
+  const [newTitle, setNewTitle] = useState('');
+  const [newCategory, setNewCategory] = useState('Noticia');
+  const [newSummary, setNewSummary] = useState('');
+  const [newImagePreview, setNewImagePreview] = useState('');
+  const newsImageInputRef = useRef<HTMLInputElement>(null);
+
+  // Modal del Manual y PDF persistente
+  const [showManualModal, setShowManualModal] = useState(false);
+  const [manualPdfUrl, setManualPdfUrl] = useState<string | null>(null);
+
+  // Cargar noticias y manual guardados previamente
+  useEffect(() => {
+    try {
+      const savedNews = localStorage.getItem('dhli_custom_news');
+      if (savedNews) setNewsList(JSON.parse(savedNews));
+
+      const savedPdf = localStorage.getItem('dhli_manual_pdf_data');
+      if (savedPdf) setManualPdfUrl(savedPdf);
+    } catch {}
+  }, []);
+
+  // Rotación suave del carrusel
+  useEffect(() => {
+    if (newsList.length <= 1) return;
+    const interval = setInterval(() => {
+      setActiveNewsIdx((prev) => (prev + 1) % newsList.length);
+    }, 6000);
+    return () => clearInterval(interval);
+  }, [newsList.length]);
+
+  const currentBGT = estimateBGT(temp, rh, ws, sr, hasShade);
   const result = livestockMode === 'dairy'
     ? calculateDHLI(currentBGT, rh, lang, dairyBreed, yieldLevel)
     : calculateHLI_Beef(currentBGT, rh, ws, lang, beefBreed);
 
-  // Cuantificación económica
   const dailyPhysicalLost = livestockMode === 'dairy'
     ? (result as any).milkLoss * animalCount
     : (result as any).adgLoss * animalCount;
@@ -81,6 +114,16 @@ export default function HomePage() {
   const dailyMoneyLost = dailyPhysicalLost * unitPrice;
   const monthlyMoneyLost = dailyMoneyLost * 30;
   const roiMonths = dailyMoneyLost > 0 ? (mitigationCost / monthlyMoneyLost).toFixed(1) : 'N/A';
+
+  // Función para seleccionar un lugar encontrado en el buscador
+  const handleSelectPlace = (item: any) => {
+    const newLat = parseFloat(item.lat);
+    const newLon = parseFloat(item.lon);
+    const name = item.display_name.split(',').slice(0, 3).join(', ');
+    setSearchQuery('');
+    setSearchResults([]);
+    handleLocationUpdate(newLat, newLon, name);
+  };
 
   const handleLocationUpdate = async (newLat: number, newLon: number, customName?: string) => {
     setLat(newLat);
@@ -101,7 +144,7 @@ export default function HomePage() {
       const data = await getWeatherData(
         newLat,
         newLon,
-        maxYearLimit,
+        2100,
         hasShade,
         scenario,
         livestockMode,
@@ -149,17 +192,13 @@ export default function HomePage() {
       }
 
       setYearsList(data.yearsData);
-      const nowYear = new Date().getFullYear();
-      const currentYearObj = data.yearsData.find((y: any) => y.year === nowYear) || data.yearsData[0];
+      const currentYearObj = data.yearsData.find((y: any) => y.year === filterYear) || data.yearsData[0];
       setSelectedYear(currentYearObj);
-      
-      const nowMonthIdx = new Date().getMonth();
-      if (currentYearObj && currentYearObj.months) {
-        setSelectedMonth(currentYearObj.months[nowMonthIdx]);
+      if (currentYearObj?.months) {
+        setSelectedMonth(currentYearObj.months[filterMonth]);
       }
-
     } catch (e) {
-      console.error('Error al actualizar datos meteorológicos:', e);
+      console.error(e);
     } finally {
       setLoading(false);
     }
@@ -169,49 +208,21 @@ export default function HomePage() {
     if (selectedCoords) {
       handleLocationUpdate(selectedCoords.lat, selectedCoords.lng, placeName);
     }
-  }, [livestockMode, hasShade, dairyBreed, beefBreed, yieldLevel, scenario, maxYearLimit, lang]);
-
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      if (searchQuery.trim().length > 2) {
-        try {
-          const res = await fetch(`/api/geocode?q=${encodeURIComponent(searchQuery)}`);
-          if (res.ok) {
-            const data = await res.json();
-            setSearchResults(data || []);
-          }
-        } catch {
-          setSearchResults([]);
-        }
-      } else {
-        setSearchResults([]);
-      }
-    }, 400);
-
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
-  const handleSelectPlace = (item: any) => {
-    const newLat = parseFloat(item.lat);
-    const newLon = parseFloat(item.lon);
-    const name = item.display_name.split(',').slice(0, 3).join(', ');
-    setSearchQuery('');
-    handleLocationUpdate(newLat, newLon, name);
-  };
+  }, [livestockMode, hasShade, dairyBreed, beefBreed, yieldLevel, scenario]);
 
   const handleManualCoordsSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const parsedLat = parseFloat(manualLat);
-    const parsedLon = parseFloat(manualLon);
-    if (!isNaN(parsedLat) && !isNaN(parsedLon)) {
-      handleLocationUpdate(parsedLat, parsedLon);
+    const pLat = parseFloat(manualLat);
+    const pLon = parseFloat(manualLon);
+    if (!isNaN(pLat) && !isNaN(pLon)) {
+      handleLocationUpdate(pLat, pLon);
       setShowCoordsPanel(false);
     }
   };
 
   const handleGPS = () => {
     if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(async (pos) => {
+      navigator.geolocation.getCurrentPosition((pos) => {
         handleLocationUpdate(pos.coords.latitude, pos.coords.longitude);
       });
     }
@@ -221,22 +232,21 @@ export default function HomePage() {
     const dateStr = new Date().toLocaleDateString('es-CO');
     const indexName = livestockMode === 'dairy' ? 'DHLI' : 'HLI';
     const impactText = livestockMode === 'dairy'
-      ? `📉 *Pérdida esperada:* -${(result as any).milkLoss} L/vaca/día (${dailyPhysicalLost.toFixed(0)} L/día en el hato)`
-      : `📉 *Caída en Ganancia:* -${(result as any).adgLoss} kg/día/novillo (-${(result as any).dmiDrop}% consumo MS)`;
+      ? `Pérdida esperada: -${(result as any).milkLoss} litros/vaca/día (${dailyPhysicalLost.toFixed(0)} L/día en el hato)`
+      : `Caída en ganancia: -${(result as any).adgLoss} kg/día/novillo`;
 
-    const msg = `🚨 *ALERTA DIARIA DE ESTRÉS TÉRMICO BOVINO (${indexName})*\n` +
-      `📍 *Ubicación:* ${placeName}\n` +
-      `🐄 *Propósito:* ${livestockMode === 'dairy' ? `Leche (${dairyBreed.toUpperCase()})` : `Carne (${beefBreed.toUpperCase()})`}\n` +
-      `📅 *Fecha:* ${dateStr}\n` +
-      `🌡️ *${indexName} Actual:* ${result.indexVal} (${result.category})\n` +
-      `☀️ *Temp:* ${temp}°C | *Globo Negro:* ${result.bgt}°C | *Humedad:* ${rh}%\n` +
+    const msg = `Alerta de estrés calórico bovino (${indexName})\n` +
+      `Ubicación: ${placeName}\n` +
+      `Propósito: ${livestockMode === 'dairy' ? `Leche (${dairyBreed})` : `Carne (${beefBreed})`}\n` +
+      `Fecha: ${dateStr}\n` +
+      `Índice actual: ${result.indexVal} (${result.category})\n` +
+      `Temperatura: ${temp} °C | Humedad: ${rh}%\n` +
       `${impactText}\n` +
-      `💰 *Pérdida financiera diaria:* $${dailyMoneyLost.toLocaleString()} ${currencySymbol}\n` +
-      `🧬 *Diagnóstico:* ${result.meaning}\n\n` +
-      `🔗 *Consulta el monitor completo en:* https://dhli-global.org`;
+      `Pérdida financiera diaria: $${dailyMoneyLost.toLocaleString()} ${currencySymbol}\n` +
+      `Diagnóstico: ${result.meaning}\n\n` +
+      `Consulta el monitor en: https://dhli-global.org`;
 
-    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(msg)}`;
-    window.open(whatsappUrl, '_blank');
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`;
   };
 
   const handleExportCSV = () => {
@@ -246,335 +256,371 @@ export default function HomePage() {
     hourlyData.forEach((row) => {
       csvContent += `${row.label},${row.Temp},${row.BGT.toFixed(1)},${row.DHLI}\n`;
     });
-    const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
+    link.setAttribute('href', encodeURI(csvContent));
     link.setAttribute('download', `${indexName}_Datos_${placeName.replace(/[^a-zA-Z0-9]/g, '_')}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
+  // Gestión de Fotos y Noticias por el Administrador
+  const handleImageFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setNewImagePreview(event.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleAddNewsItem = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTitle.trim() || !newSummary.trim()) return;
+
+    const newItem: NewsItem = {
+      id: Date.now().toString(),
+      title: newTitle,
+      category: newCategory,
+      summary: newSummary,
+      imageUrl: newImagePreview || 'https://images.unsplash.com/photo-1570042225831-d98fa7577f1e?auto=format&fit=crop&w=800&q=80',
+      date: 'Publicado hoy',
+      linkText: 'Leer más',
+    };
+
+    const updated = [newItem, ...newsList];
+    setNewsList(updated);
+    try {
+      localStorage.setItem('dhli_custom_news', JSON.stringify(updated));
+    } catch {}
+
+    setNewTitle('');
+    setNewSummary('');
+    setNewImagePreview('');
+    setShowNewsAdminModal(false);
+  };
+
+  const handleDeleteNewsItem = (id: string) => {
+    const updated = newsList.filter((item) => item.id !== id);
+    setNewsList(updated);
+    try {
+      localStorage.setItem('dhli_custom_news', JSON.stringify(updated));
+    } catch {}
+  };
+
+  // Carga persistente del Manual en PDF
+  const handleManualUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type === 'application/pdf') {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64Data = event.target?.result as string;
+        setManualPdfUrl(base64Data);
+        try {
+          localStorage.setItem('dhli_manual_pdf_data', base64Data);
+        } catch {}
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const thresholdLineValue = livestockMode === 'dairy' ? 25 : 77;
+
   return (
-    <main className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-8 font-sans relative">
-      <div className="max-w-6xl mx-auto space-y-6">
-        
-        {/* Barra Superior con Selector Dual LECHE / CARNE */}
-        <div className="flex flex-wrap justify-between items-center gap-3 pb-3 border-b border-slate-800/80">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">{livestockMode === 'dairy' ? '🥛' : '🥩'}</span>
+    <main className={`min-h-screen font-sans transition-colors duration-500 ${livestockMode === 'dairy' ? 'bg-slate-900 text-slate-100' : 'bg-stone-950 text-stone-100'}`}>
+      
+      {/* Barra de Navegación Superior */}
+      <header className="border-b border-white/10 bg-black/40 backdrop-blur-xl sticky top-0 z-40 px-4 md:px-10 py-3">
+        <div className="max-w-7xl mx-auto flex flex-wrap justify-between items-center gap-3">
+          
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">{livestockMode === 'dairy' ? '🥛' : '🥩'}</span>
             <div>
-              <span className="font-black text-sm tracking-wider text-emerald-400">BOVINE HEAT STRESS DSS</span>
-              <span className="text-[10px] text-slate-400 block">{livestockMode === 'dairy' ? 'Modelo Lechero DHLI (Lees et al. 2018)' : 'Modelo Cárnico HLI (Gaughan et al. 2008)'}</span>
+              <span className="font-extrabold text-sm md:text-base tracking-wide text-emerald-400 block">
+                Monitor global de estrés térmico bovino
+              </span>
+              <span className="text-[11px] text-slate-400">
+                {livestockMode === 'dairy' ? 'Sistema lechero (DHLI - Lees et al., 2018)' : 'Sistema cárnico (HLI - Gaughan et al., 2008)'}
+              </span>
             </div>
           </div>
 
-          <div className="flex bg-slate-900 p-1 rounded-2xl border border-slate-800 shadow-inner">
+          {/* Selector Leche vs Carne */}
+          <div className="flex bg-slate-950/80 p-1.5 rounded-2xl border border-white/10 shadow-2xl">
             <button
               onClick={() => { setLivestockMode('dairy'); setUnitPrice(2200); }}
-              className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 transition ${livestockMode === 'dairy' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/40' : 'text-slate-400 hover:text-white'}`}
+              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition ${livestockMode === 'dairy' ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/30' : 'text-slate-400 hover:text-white'}`}
             >
-              <Milk className="w-4 h-4" /> {t.modeDairy}
+              <Milk className="w-4 h-4" /> Bovinos de leche (DHLI)
             </button>
             <button
               onClick={() => { setLivestockMode('beef'); setUnitPrice(8500); }}
-              className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-2 transition ${livestockMode === 'beef' ? 'bg-red-600 text-white shadow-lg shadow-red-900/40' : 'text-slate-400 hover:text-white'}`}
+              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition ${livestockMode === 'beef' ? 'bg-red-600 text-white shadow-lg shadow-red-600/30' : 'text-slate-400 hover:text-white'}`}
             >
-              <Beef className="w-4 h-4" /> {t.modeBeef}
+              <Beef className="w-4 h-4" /> Bovinos de carne (HLI)
             </button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <button onClick={handleSendWhatsAppAlert} type="button" className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-lg shadow-emerald-950 transition">
-              <MessageCircle className="w-3.5 h-3.5" /> {t.btnSendWhatsapp}
+          {/* Acciones Rápidas */}
+          <div className="flex items-center gap-2">
+            <button onClick={() => setShowManualModal(true)} className="px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition">
+              <BookOpen className="w-3.5 h-3.5 text-blue-400" /> Manual de usuario
             </button>
-            <button onClick={() => setShowFinanceModal(!showFinanceModal)} type="button" className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-lg shadow-amber-950 transition">
-              <DollarSign className="w-3.5 h-3.5" /> {t.btnFinance}
+            <button onClick={handleSendWhatsAppAlert} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition shadow-lg">
+              <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
             </button>
-            <button onClick={handleExportCSV} type="button" className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 rounded-xl text-xs flex items-center gap-1.5 border border-slate-800 text-slate-300">
-              <Download className="w-3.5 h-3.5 text-emerald-400" /> {t.btnExportCsv}
+            <button onClick={() => setShowFinanceModal(!showFinanceModal)} className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-lg">
+              <DollarSign className="w-3.5 h-3.5" /> Calculadora ($)
             </button>
-            <button onClick={() => window.print()} type="button" className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 rounded-xl text-xs flex items-center gap-1.5 border border-slate-800 text-slate-300">
-              <Printer className="w-3.5 h-3.5 text-blue-400" /> {t.btnPrintPdf}
-            </button>
-
-            <div className="flex items-center gap-1 bg-slate-900 px-2 py-1 rounded-xl border border-slate-800 text-xs">
-              <Languages className="w-3.5 h-3.5 text-slate-400 mr-1" />
-              <button onClick={() => setLang('es')} className={`px-2 py-0.5 rounded font-semibold ${lang === 'es' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'}`}>ES</button>
-              <button onClick={() => setLang('en')} className={`px-2 py-0.5 rounded font-semibold ${lang === 'en' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'}`}>EN</button>
-              <button onClick={() => setLang('pt')} className={`px-2 py-0.5 rounded font-semibold ${lang === 'pt' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'}`}>PT</button>
-            </div>
           </div>
+
         </div>
+      </header>
 
-        {/* Encabezado Principal en MAYÚSCULAS */}
-        <div className="text-center space-y-1">
-          <h1 className="text-2xl md:text-4xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-teal-300 to-emerald-400 uppercase">
-            {t.title}
-          </h1>
-          <p className="text-slate-400 text-xs md:text-sm">
-            {t.subtitle}
-          </p>
-        </div>
+      <div className="max-w-7xl mx-auto p-4 md:p-8 space-y-8">
 
-        {/* Modal de Configuración del Hato */}
-        {showHerdModal && (
-          <div className="bg-slate-900 p-5 rounded-3xl border border-emerald-500/40 grid grid-cols-1 md:grid-cols-2 gap-4 shadow-2xl">
-            {livestockMode === 'dairy' ? (
-              <>
-                <div>
-                  <label className="text-xs font-semibold text-slate-300 block mb-1.5">{t.breedLabel} (Leche)</label>
-                  <select
-                    value={dairyBreed}
-                    onChange={(e) => setDairyBreed(e.target.value as DairyBreedType)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-                  >
-                    <option value="holstein">Holstein / Frisón (Umbral DHLI = 22–25 | k = 0,08–0,14)</option>
-                    <option value="jersey">Jersey (Umbral DHLI = 32,0 | k = 0,06 - DairyNZ 2017)</option>
-                    <option value="girolando">Girolando 1/2 y 3/4 (Umbral DHLI = 38,0 | k = 0,05 - Boonkum 2024)</option>
-                    <option value="cross">Doble Propósito / Criollo (Umbral DHLI = 42,0 | k = 0,04 - Gantner 2017)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-300 block mb-1.5">{t.prodLabel}</label>
-                  <select
-                    value={yieldLevel}
-                    onChange={(e) => setYieldLevel(e.target.value as YieldLevel)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-                  >
-                    <option value="high">Alta producción (&gt; 35 kg/vaca/día - Mayor calor metabólico, Berman 2005)</option>
-                    <option value="medium">Producción media (20 – 30 kg/vaca/día - Típica)</option>
-                    <option value="low">Baja producción / Pastoreo (&lt; 15 kg/vaca/día)</option>
-                  </select>
-                </div>
-              </>
-            ) : (
-              <>
-                <div>
-                  <label className="text-xs font-semibold text-slate-300 block mb-1.5">{t.breedLabel} (Carne)</label>
-                  <select
-                    value={beefBreed}
-                    onChange={(e) => setBeefBreed(e.target.value as BeefBreedType)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-                  >
-                    <option value="angus">Británicas / Continentales (Angus, Hereford - Umbral HLI 86 / Recup 77)</option>
-                    <option value="brangus">Sintéticas (Brangus, Braford - Umbral HLI 89 / Recup 80)</option>
-                    <option value="brahman">Cebuinas / Zebu (Brahman, Nelore - Umbral HLI 93 / Recup 84)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-300 block mb-1.5">Sistema de Producción:</label>
-                  <select className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
-                    <option>Ceba en Pastoreo Intensivo</option>
-                    <option>Engorde a Corral / Feedlot (Alta densidad)</option>
-                    <option>Levante / Recría</option>
-                  </select>
-                </div>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Modal Financiero y Retorno de Inversión (ROI) */}
-        {showFinanceModal && (
-          <div className="bg-slate-900 p-6 rounded-3xl border border-amber-500/40 shadow-2xl space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2">
-                <DollarSign className="w-5 h-5 text-amber-400" />
-                <h3 className="font-bold text-sm text-white">Calculadora de Pérdidas y ROI ({livestockMode === 'dairy' ? 'Modelo Lácteo' : 'Modelo de Carne'})</h3>
-              </div>
-              <span className="text-xs bg-amber-950 text-amber-300 px-2.5 py-0.5 rounded-full border border-amber-800 font-semibold">
-                St-Pierre et al. (2003) / Mayer et al. (1999)
+        {/* Panel Central Interactivo / Carrusel de Novedades y Anuncios */}
+        <div className="relative rounded-3xl overflow-hidden border border-white/10 bg-gradient-to-r from-emerald-950/40 via-slate-900/60 to-blue-950/40 p-6 md:p-8 shadow-2xl backdrop-blur-xl">
+          <div className="flex justify-between items-center mb-3">
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                {newsList[activeNewsIdx]?.category || 'Novedad'}
               </span>
+              <span className="text-[11px] text-slate-400">{newsList[activeNewsIdx]?.date}</span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
-              <div>
-                <label className="text-slate-400 block mb-1">{livestockMode === 'dairy' ? 'Vacas en ordeño:' : 'Novillos en lote:'}</label>
-                <input type="number" min="1" value={animalCount} onChange={(e) => setAnimalCount(Math.max(1, Number(e.target.value)))} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono" />
-              </div>
-              <div>
-                <label className="text-slate-400 block mb-1">{livestockMode === 'dairy' ? 'Precio por litro de leche:' : 'Precio por kg de carne vivo:'}</label>
-                <input type="number" min="0" value={unitPrice} onChange={(e) => setUnitPrice(Number(e.target.value))} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono" />
-              </div>
-              <div>
-                <label className="text-slate-400 block mb-1">Moneda:</label>
-                <select value={currencySymbol} onChange={(e) => setCurrencySymbol(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white">
-                  <option value="COP ($)">COP ($)</option>
-                  <option value="USD ($)">USD ($)</option>
-                  <option value="BRL (R$)">BRL (R$)</option>
-                  <option value="EUR (€)">EUR (€)</option>
-                  <option value="MXN ($)">MXN ($)</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-slate-400 block mb-1">Costo de inversión (Mitigación):</label>
-                <input type="number" min="0" value={mitigationCost} onChange={(e) => setMitigationCost(Number(e.target.value))} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono" />
+            {/* BOTÓN DIRECTO EN PANTALLA PARA GESTIONAR Y SUBIR ANUNCIOS */}
+            <button
+              onClick={() => setShowNewsAdminModal(true)}
+              className="px-3 py-1 bg-white/10 hover:bg-emerald-600 hover:text-white rounded-xl text-xs font-semibold text-slate-300 border border-white/10 flex items-center gap-1.5 transition"
+            >
+              <PlusCircle className="w-3.5 h-3.5 text-emerald-400" /> Gestionar anuncios
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+            <div className="md:col-span-2 space-y-3">
+              <h2 className="text-xl md:text-2xl font-bold text-white leading-tight">
+                {newsList[activeNewsIdx]?.title}
+              </h2>
+              <p className="text-xs md:text-sm text-slate-300 leading-relaxed">
+                {newsList[activeNewsIdx]?.summary}
+              </p>
+              <div className="flex gap-2 pt-2">
+                {newsList.map((_, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setActiveNewsIdx(i)}
+                    className={`h-2 rounded-full transition-all ${activeNewsIdx === i ? 'w-8 bg-emerald-400' : 'w-2 bg-white/20'}`}
+                  />
+                ))}
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-              <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
-                <span className="text-[11px] text-slate-400 block">Pérdida monetaria diaria:</span>
-                <span className="text-2xl font-black text-amber-400">${dailyMoneyLost.toLocaleString()}</span>
-                <span className="text-[10px] text-slate-500 block">
-                  ({dailyPhysicalLost.toFixed(1)} {livestockMode === 'dairy' ? 'L/día en el hato' : 'kg en pie no ganados/día'})
-                </span>
-              </div>
-              <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
-                <span className="text-[11px] text-slate-400 block">Pérdida mensual proyectada:</span>
-                <span className="text-2xl font-black text-red-400">${monthlyMoneyLost.toLocaleString()}</span>
-                <span className="text-[10px] text-slate-500 block">Basado en 30 días acumulados</span>
-              </div>
-              <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
-                <span className="text-[11px] text-slate-400 block">Tiempo de retorno de inversión (ROI):</span>
-                <span className="text-2xl font-black text-emerald-400">{roiMonths} meses</span>
-                <span className="text-[10px] text-slate-500 block">Amortización por leche o carne que se deja de perder</span>
-              </div>
+            <div className="relative h-44 rounded-2xl overflow-hidden border border-white/10 shadow-lg">
+              <img
+                src={newsList[activeNewsIdx]?.imageUrl}
+                alt="Imagen del anuncio"
+                className="w-full h-full object-cover transform hover:scale-105 transition duration-500"
+              />
             </div>
           </div>
-        )}
+        </div>
 
-        {/* Barra de Búsqueda y Botones de Control */}
-        <div className="relative z-30">
-          <div className="bg-slate-900/90 p-3 md:p-4 rounded-2xl border border-slate-800 flex flex-wrap gap-3 items-center justify-between shadow-xl">
-            <div className="flex-1 min-w-[260px] relative">
-              <input
-                type="text"
-                placeholder={t.searchPlaceholder}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-700 rounded-xl focus:outline-none focus:border-emerald-500 text-sm"
-              />
-              <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+        {/* Barra de Búsqueda y Filtros con Botón de Buscar */}
+        <div className="bg-slate-900/90 p-4 rounded-3xl border border-white/10 shadow-2xl space-y-4 backdrop-blur-xl">
+          <div className="flex flex-wrap gap-3 items-center justify-between">
+            <div className="flex-1 min-w-[280px] flex gap-2">
+              <div className="flex-1 relative">
+                <input
+                  type="text"
+                  placeholder="Buscar municipio, departamento o país (ej. Sopó, Montería, Rafaela)..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-950 border border-slate-700 rounded-2xl text-xs md:text-sm text-white focus:outline-none focus:border-emerald-500"
+                />
+                <Search className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
+              </div>
+              <button
+                onClick={() => {
+                  if (searchResults.length > 0) handleSelectPlace(searchResults[0]);
+                }}
+                className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-2xl text-xs transition flex items-center gap-1.5 shadow-lg"
+              >
+                Buscar
+              </button>
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <button onClick={handleGPS} type="button" className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 transition rounded-xl text-xs md:text-sm flex items-center gap-1.5 font-semibold text-white">
-                <MapPin className="w-4 h-4" /> {t.btnGps}
+              <button onClick={handleGPS} className="px-3.5 py-2.5 bg-emerald-700 hover:bg-emerald-600 rounded-2xl text-xs font-semibold flex items-center gap-1.5 text-white transition">
+                <MapPin className="w-4 h-4" /> Mi ubicación (GPS)
               </button>
-
-              <button
-                onClick={() => setShowCoordsPanel(!showCoordsPanel)}
-                type="button"
-                className={`px-3 py-2 transition rounded-xl text-xs md:text-sm flex items-center gap-1.5 font-semibold border ${showCoordsPanel ? 'bg-emerald-700 text-white border-emerald-500' : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'}`}
-              >
-                <Navigation className="w-4 h-4" /> {t.btnCoords}
+              <button onClick={() => setShowCoordsPanel(!showCoordsPanel)} className="px-3.5 py-2.5 bg-slate-800 hover:bg-slate-700 rounded-2xl text-xs font-semibold flex items-center gap-1.5 border border-slate-700 text-white transition">
+                <Navigation className="w-4 h-4" /> Coordenadas
               </button>
-
               <button
                 onClick={() => setHasShade(!hasShade)}
-                type="button"
-                className={`px-3 py-2 transition rounded-xl text-xs md:text-sm flex items-center gap-1.5 font-semibold border ${hasShade ? 'bg-teal-600 text-white border-teal-400 shadow-lg shadow-teal-950' : 'bg-amber-600 hover:bg-amber-500 text-white border-amber-500'}`}
+                className={`px-3.5 py-2.5 rounded-2xl text-xs font-semibold flex items-center gap-1.5 border transition ${hasShade ? 'bg-teal-600 border-teal-400 text-white' : 'bg-amber-600 border-amber-500 text-white'}`}
               >
                 {hasShade ? <Trees className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-                {hasShade ? t.btnShadeTree : t.btnShadeSun}
+                {hasShade ? 'Con sombra (80% atenuación)' : 'A pleno sol'}
               </button>
-
-              <button
-                onClick={() => setShowHerdModal(!showHerdModal)}
-                type="button"
-                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 transition rounded-xl text-xs md:text-sm flex items-center gap-1.5 border border-slate-700 text-slate-200"
-              >
-                <Settings className="w-4 h-4 text-emerald-400" /> {t.btnHerdConfig}
-              </button>
-              
               <button
                 onClick={() => setMapMode(mapMode === 'globe' ? 'satellite' : 'globe')}
-                type="button"
-                className="px-3 py-2 bg-blue-600 hover:bg-blue-500 transition rounded-xl text-xs md:text-sm flex items-center gap-1.5 font-semibold text-white shadow-lg shadow-blue-900/40"
+                className="px-3.5 py-2.5 bg-blue-600 hover:bg-blue-500 rounded-2xl text-xs font-semibold flex items-center gap-1.5 text-white transition"
               >
                 {mapMode === 'globe' ? <MapIcon className="w-4 h-4" /> : <Globe2 className="w-4 h-4" />}
-                {mapMode === 'globe' ? t.btnSatellite : t.btnGlobe}
-              </button>
-
-              <button onClick={() => setManualMode(!manualMode)} type="button" className="px-3 py-2 bg-slate-800 hover:bg-slate-700 transition rounded-xl text-xs md:text-sm flex items-center gap-1.5 border border-slate-700">
-                <Sliders className="w-4 h-4" /> {manualMode ? t.btnAuto : t.btnSliders}
+                {mapMode === 'globe' ? 'Ver finca (Satélite 2D)' : 'Ver globo 3D'}
               </button>
             </div>
           </div>
 
+          {/* Autocompletado */}
           {searchResults.length > 0 && (
-            <div className="absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden divide-y divide-slate-800">
+            <div className="bg-slate-950 border border-slate-700 rounded-2xl overflow-hidden divide-y divide-slate-800">
               {searchResults.map((item, idx) => (
                 <button
                   key={idx}
                   onClick={() => handleSelectPlace(item)}
-                  className="w-full text-left px-4 py-3 hover:bg-slate-800 text-xs md:text-sm text-slate-200 transition flex items-center gap-2"
+                  className="w-full text-left px-4 py-2.5 hover:bg-slate-900 text-xs text-slate-300 flex items-center gap-2 transition"
                 >
-                  <MapPin className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <MapPin className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                   <span className="truncate">{item.display_name}</span>
                 </button>
               ))}
             </div>
           )}
-        </div>
 
-        {/* Panel Coordenadas Manuales */}
-        {showCoordsPanel && (
-          <form onSubmit={handleManualCoordsSubmit} className="bg-slate-900 p-4 rounded-2xl border border-emerald-500/40 flex flex-wrap gap-4 items-end shadow-xl">
-            <div className="flex-1 min-w-[140px]">
-              <label className="text-xs text-slate-400 block mb-1 font-medium">{t.latLabel} (-90 a 90):</label>
-              <input type="number" step="any" placeholder="Ej. 6.15" value={manualLat} onChange={(e) => setManualLat(e.target.value)} className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-xl text-xs focus:outline-none focus:border-emerald-500 font-mono" />
-            </div>
-            <div className="flex-1 min-w-[140px]">
-              <label className="text-xs text-slate-400 block mb-1 font-medium">{t.lonLabel} (-180 a 180):</label>
-              <input type="number" step="any" placeholder="Ej. -75.36" value={manualLon} onChange={(e) => setManualLon(e.target.value)} className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-xl text-xs focus:outline-none focus:border-emerald-500 font-mono" />
-            </div>
-            <button type="submit" className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 transition rounded-xl text-xs font-semibold text-white flex items-center gap-1.5">
-              <Navigation className="w-3.5 h-3.5" /> {t.btnSearchCoords}
-            </button>
-          </form>
-        )}
+          {/* Coordenadas Manuales */}
+          {showCoordsPanel && (
+            <form onSubmit={handleManualCoordsSubmit} className="pt-2 border-t border-slate-800 flex flex-wrap gap-3 items-end">
+              <div className="flex-1 min-w-[140px]">
+                <label className="text-[11px] text-slate-400 block mb-1">Latitud (-90 a 90):</label>
+                <input
+                  type="number"
+                  step="any"
+                  placeholder="Ej. 6.15"
+                  value={manualLat}
+                  onChange={(e) => setManualLat(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white"
+                />
+              </div>
+              <div className="flex-1 min-w-[140px]">
+                <label className="text-[11px] text-slate-400 block mb-1">Longitud (-180 a 180):</label>
+                <input
+                  type="number"
+                  step="any"
+                  placeholder="Ej. -75.36"
+                  value={manualLon}
+                  onChange={(e) => setManualLon(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs text-white"
+                />
+              </div>
+              <button type="submit" className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-xs font-bold text-white">
+                Ir a coordenadas
+              </button>
+            </form>
+          )}
 
-        {/* Sliders Manuales */}
-        {manualMode && (
-          <div className="bg-slate-900 p-5 rounded-2xl border border-emerald-500/30 grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-            <div>
-              <label className="text-slate-400 flex items-center gap-1 mb-1"><Thermometer className="w-3.5 h-3.5 text-red-400" /> {t.tempLabel} ({temp}°C)</label>
-              <input type="range" min="-5" max="50" value={temp} onChange={(e) => setTemp(Number(e.target.value))} className="w-full accent-emerald-500" />
+          {/* Configuración del Hato Visible y Separada */}
+          <div className="pt-3 border-t border-slate-800 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                {livestockMode === 'dairy' ? '🥛 Hato lechero (Raza / Biotipo):' : '🥩 Hato cárnico (Raza / Biotipo):'}
+              </label>
+              {livestockMode === 'dairy' ? (
+                <select
+                  value={dairyBreed}
+                  onChange={(e) => setDairyBreed(e.target.value as DairyBreedType)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="holstein">Holstein / Frisón (Umbral crítico temprano)</option>
+                  <option value="jersey">Jersey (Tolerancia intermedia - DairyNZ)</option>
+                  <option value="girolando">Girolando 1/2 y 3/4 (Alta tolerancia tropical)</option>
+                  <option value="cross">Doble propósito / Criollo (Rusticidad adaptada)</option>
+                </select>
+              ) : (
+                <select
+                  value={beefBreed}
+                  onChange={(e) => setBeefBreed(e.target.value as BeefBreedType)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="angus">Británicas / Continentales (Angus, Hereford)</option>
+                  <option value="brangus">Sintéticas (Brangus, Braford)</option>
+                  <option value="brahman">Cebuinas / Zebu (Brahman, Nelore)</option>
+                </select>
+              )}
             </div>
-            <div>
-              <label className="text-slate-400 flex items-center gap-1 mb-1"><Droplets className="w-3.5 h-3.5 text-blue-400" /> {t.rhLabel} ({rh}%)</label>
-              <input type="range" min="0" max="100" value={rh} onChange={(e) => setRh(Number(e.target.value))} className="w-full accent-emerald-500" />
-            </div>
-            <div>
-              <label className="text-slate-400 flex items-center gap-1 mb-1"><Wind className="w-3.5 h-3.5 text-teal-400" /> {t.wsLabel} ({ws} m/s)</label>
-              <input type="range" min="0" max="25" step="0.5" value={ws} onChange={(e) => setWs(Number(e.target.value))} className="w-full accent-emerald-500" />
-            </div>
-            <div>
-              <label className="text-slate-400 flex items-center gap-1 mb-1"><Sun className="w-3.5 h-3.5 text-amber-400" /> {t.srLabel} ({sr} W/m²)</label>
-              <input type="range" min="0" max="1200" step="50" value={sr} onChange={(e) => setSr(Number(e.target.value))} className="w-full accent-emerald-500" />
+
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                {livestockMode === 'dairy' ? 'Nivel de producción diaria:' : 'Sistema de engorde:'}
+              </label>
+              {livestockMode === 'dairy' ? (
+                <select
+                  value={yieldLevel}
+                  onChange={(e) => setYieldLevel(e.target.value as YieldLevel)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="high">Alta producción (&gt; 35 L / vaca / día)</option>
+                  <option value="medium">Producción media (20 – 30 L / vaca / día)</option>
+                  <option value="low">Baja producción / Pastoreo (&lt; 15 L / vaca / día)</option>
+                </select>
+              ) : (
+                <select className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500">
+                  <option>Ceba en pastoreo intensivo</option>
+                  <option>Engorde a corral / Confinamiento (Feedlot)</option>
+                  <option>Levante y recría</option>
+                </select>
+              )}
             </div>
           </div>
-        )}
 
-        {/* Visor de Mapa con Capa Térmica Dinámica */}
-        {mapMode === 'globe' ? (
-          <EarthGlobe
-            lang={lang}
-            selectedCoords={selectedCoords}
-            onSelectLocation={(newLat, newLon) => handleLocationUpdate(newLat, newLon)}
-          />
-        ) : (
-          <FarmMap
-            lat={lat}
-            lon={lon}
-            heatLevel={result.indexVal}
-            onLocationChange={(newLat, newLon) => handleLocationUpdate(newLat, newLon)}
-          />
-        )}
+        </div>
 
-        {/* Tarjetas de Diagnóstico Fisiológico y Pérdidas */}
+        {/* Visor de Mapa con Avatar Bovino Futurista */}
+        <div className="relative">
+          {mapMode === 'globe' ? (
+            <EarthGlobe
+              lang={lang}
+              selectedCoords={selectedCoords}
+              onSelectLocation={(newLat, newLon) => handleLocationUpdate(newLat, newLon)}
+            />
+          ) : (
+            <FarmMap
+              lat={lat}
+              lon={lon}
+              heatLevel={result.indexVal}
+              onLocationChange={(newLat, newLon) => handleLocationUpdate(newLat, newLon)}
+            />
+          )}
+
+          {/* Avatar Bovino Futurista */}
+          <div className="absolute top-4 right-4 z-20 group cursor-pointer">
+            <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-slate-900/80 backdrop-blur-md border border-white/20 p-2 shadow-2xl transform group-hover:scale-110 group-hover:rotate-3 transition duration-300 flex flex-col items-center justify-center">
+              <span className="text-2xl md:text-3xl animate-bounce">
+                {livestockMode === 'dairy' ? '🧬🐄' : '⚡🐂'}
+              </span>
+              <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-tighter">
+                {livestockMode === 'dairy' ? 'Genoma lechero' : 'Biotipo carne'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Tarjetas de Diagnóstico y Pérdidas */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-slate-900/90 p-6 rounded-3xl border border-slate-800 space-y-3 shadow-xl">
+          
+          <div className="bg-slate-900/90 p-6 rounded-3xl border border-white/10 space-y-3 shadow-xl backdrop-blur-xl">
             <div className="flex justify-between items-center">
               <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                {livestockMode === 'dairy' ? 'Índice DHLI (Leche)' : 'Índice HLI (Carne)'}
+                {livestockMode === 'dairy' ? 'Índice DHLI actual' : 'Índice HLI actual'}
               </span>
               {hasShade && (
-                <span className="text-[10px] bg-teal-950 text-teal-300 border border-teal-800 px-2 py-0.5 rounded-full flex items-center gap-1">
-                  <Trees className="w-3 h-3" /> Con Sombra
+                <span className="text-[10px] bg-teal-950 text-teal-300 border border-teal-800 px-2 py-0.5 rounded-full flex items-center gap-1 font-semibold">
+                  <Trees className="w-3 h-3" /> Sombra activa
                 </span>
               )}
             </div>
@@ -588,27 +634,27 @@ export default function HomePage() {
               {selectedCoords ? result.category : 'Listo para analizar'}
             </div>
             <p className="text-xs text-slate-300 border-t border-slate-800 pt-3">
-              🧬 {selectedCoords ? result.meaning : 'Selecciona un punto en el mapa o busca tu municipio.'}
+              {selectedCoords ? result.meaning : 'Haz clic en el mapa o busca un municipio para calcular.'}
             </p>
           </div>
 
-          <div className="bg-slate-900/90 p-6 rounded-3xl border border-slate-800 space-y-3 shadow-xl">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.cardClimateTitle}</span>
-            <p className="text-xs text-emerald-400 truncate font-semibold">{loading ? '...' : placeName}</p>
+          <div className="bg-slate-900/90 p-6 rounded-3xl border border-white/10 space-y-3 shadow-xl backdrop-blur-xl">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Clima en el predio</span>
+            <p className="text-xs text-emerald-400 truncate font-semibold">{loading ? 'Consultando satélite...' : placeName}</p>
             <div className="grid grid-cols-2 gap-2 text-xs pt-1">
-              <div>🌡️ {t.tempLabel}: <strong>{selectedCoords ? `${temp}°C` : '--'}</strong></div>
-              <div>💧 {t.rhLabel}: <strong>{selectedCoords ? `${rh}%` : '--'}</strong></div>
-              <div>💨 {t.wsLabel}: <strong>{selectedCoords ? `${ws} m/s` : '--'}</strong></div>
-              <div>☀️ {t.srLabel}: <strong>{selectedCoords ? (hasShade ? `${(sr * 0.2).toFixed(0)} W/m²` : `${sr} W/m²`) : '--'}</strong></div>
+              <div>Temperatura: <strong>{selectedCoords ? `${temp} °C` : '--'}</strong></div>
+              <div>Humedad: <strong>{selectedCoords ? `${rh}%` : '--'}</strong></div>
+              <div>Viento: <strong>{selectedCoords ? `${ws} m/s` : '--'}</strong></div>
+              <div>Radiación: <strong>{selectedCoords ? (hasShade ? `${(sr * 0.2).toFixed(0)} W/m²` : `${sr} W/m²`) : '--'}</strong></div>
             </div>
             <div className="pt-2 border-t border-slate-800 text-xs text-slate-400">
-              {t.bgtLabel}: <strong className="text-white">{selectedCoords ? `${result.bgt}°C` : '--'}</strong> | Modo: <strong className="text-emerald-400">{livestockMode === 'dairy' ? `Leche (${dairyBreed})` : `Carne (${beefBreed})`}</strong>
+              Globo negro (BGT): <strong className="text-white">{selectedCoords ? `${result.bgt} °C` : '--'}</strong>
             </div>
           </div>
 
-          <div className="bg-slate-900/90 p-6 rounded-3xl border border-slate-800 space-y-3 shadow-xl">
+          <div className="bg-slate-900/90 p-6 rounded-3xl border border-white/10 space-y-3 shadow-xl backdrop-blur-xl">
             <div className="flex justify-between items-center">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.cardImpactTitle}</span>
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">Impacto productivo</span>
               {selectedCoords && dailyMoneyLost > 0 && (
                 <span className="text-[10px] bg-red-950 text-red-300 border border-red-800 px-2 py-0.5 rounded-full font-mono">
                   -${dailyMoneyLost.toLocaleString()} {currencySymbol}/día
@@ -619,13 +665,13 @@ export default function HomePage() {
             {livestockMode === 'dairy' ? (
               <div className="text-3xl font-black text-amber-400 pt-1">
                 {selectedCoords ? ((result as any).milkLoss === 0 ? '0.0 L' : `-${(result as any).milkLoss} L`) : '--'}
-                <span className="text-xs text-slate-400 font-normal"> / {t.milkLossUnit}</span>
+                <span className="text-xs text-slate-400 font-normal"> / vaca / día</span>
               </div>
             ) : (
               <div className="space-y-1">
                 <div className="text-3xl font-black text-amber-400 pt-1">
                   {selectedCoords ? ((result as any).adgLoss === 0 ? '0.00 kg' : `-${(result as any).adgLoss} kg`) : '--'}
-                  <span className="text-xs text-slate-400 font-normal"> / {t.beefLossUnit}</span>
+                  <span className="text-xs text-slate-400 font-normal"> / animal / día</span>
                 </div>
                 {selectedCoords && (result as any).dmiDrop > 0 && (
                   <div className="text-[11px] text-red-300 font-semibold">
@@ -638,225 +684,380 @@ export default function HomePage() {
             <div className="pt-2 border-t border-slate-800 flex items-center gap-2 text-xs">
               <Moon className="w-4 h-4 text-indigo-400 shrink-0" />
               <div className="text-slate-300">
-                <span className="font-semibold">{t.nightRecoveryTitle}</span>{' '}
+                <span className="font-semibold">Recuperación nocturna:</span>{' '}
                 <span className={nightCoolingHours >= 6 ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
                   {nightCoolingHours}h ({nightCoolingHours >= 6 ? 'Óptima' : 'Alerta'})
                 </span>
               </div>
             </div>
           </div>
+
         </div>
 
-        {/* Panel Predictivo Multiescala con Escenarios IPCC */}
-        <div className="bg-slate-900/90 p-6 rounded-3xl border border-slate-800 space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
+        {/* Panel Predictivo con Filtro en 4 Clics y Línea de Umbral Discontinua */}
+        <div className="bg-slate-900/90 p-6 rounded-3xl border border-white/10 space-y-6 shadow-2xl backdrop-blur-xl">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
             <div>
-              <h3 className="font-bold text-base text-slate-100 flex items-center gap-2">
-                📈 Módulo predictivo multiescala ({livestockMode === 'dairy' ? 'DHLI Leche' : 'HLI Carne'})
-              </h3>
-              <p className="text-xs text-slate-400">Predicción horaria, semanal y proyecciones hasta {maxYearLimit}</p>
+              <h3 className="font-bold text-base text-white">Módulo predictivo y análisis multiescala</h3>
+              <p className="text-xs text-slate-400">Selecciona el horizonte temporal en 4 clics directos</p>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              {timeTab === 'futuro' && (
-                <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
-                  <span className="px-2 py-1 text-slate-400 flex items-center gap-1 font-medium">{t.scenarioLabel}</span>
-                  <button onClick={() => setScenario('ssp245')} className={`px-2 py-1 rounded-lg font-semibold transition ${scenario === 'ssp245' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}>
-                    {t.scenarioMod}
-                  </button>
-                  <button onClick={() => setScenario('ssp585')} className={`px-2 py-1 rounded-lg font-semibold transition ${scenario === 'ssp585' ? 'bg-red-600 text-white' : 'text-slate-400 hover:text-white'}`}>
-                    {t.scenarioHigh}
-                  </button>
-                </div>
-              )}
+            {/* 4 CLICS CENTRALIZADOS: Año -> Mes -> Día -> Hora */}
+            <div className="flex flex-wrap items-center gap-2 bg-slate-950 p-2 rounded-2xl border border-slate-800 text-xs">
+              <div className="flex items-center gap-1">
+                <span className="text-slate-500 font-semibold">Año:</span>
+                <select
+                  value={filterYear}
+                  onChange={(e) => setFilterYear(Number(e.target.value))}
+                  className="bg-slate-900 text-white rounded-lg px-2 py-1 border border-slate-700"
+                >
+                  {[2024, 2025, 2026, 2030, 2040, 2050].map((y) => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </div>
 
-              <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
-                <button onClick={() => setTimeTab('24h')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${timeTab === '24h' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'}`}>
-                  <Clock className="w-3.5 h-3.5" /> {t.tab24h}
-                </button>
-                <button onClick={() => setTimeTab('7d')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${timeTab === '7d' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'}`}>
-                  <Calendar className="w-3.5 h-3.5" /> {t.tab7d}
-                </button>
-                <button onClick={() => setTimeTab('futuro')} className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition ${timeTab === 'futuro' ? 'bg-emerald-600 text-white' : 'text-slate-400 hover:text-white'}`}>
-                  <TrendingUp className="w-3.5 h-3.5" /> {t.tabFuture}
-                </button>
+              <div className="flex items-center gap-1">
+                <span className="text-slate-500 font-semibold">Mes:</span>
+                <select
+                  value={filterMonth}
+                  onChange={(e) => setFilterMonth(Number(e.target.value))}
+                  className="bg-slate-900 text-white rounded-lg px-2 py-1 border border-slate-700"
+                >
+                  {['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'].map((m, i) => (
+                    <option key={m} value={i}>{m}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-1">
+                <span className="text-slate-500 font-semibold">Día:</span>
+                <select
+                  value={filterDay}
+                  onChange={(e) => setFilterDay(Number(e.target.value))}
+                  className="bg-slate-900 text-white rounded-lg px-2 py-1 border border-slate-700"
+                >
+                  {Array.from({ length: 30 }, (_, i) => i + 1).map((d) => (
+                    <option key={d} value={d}>Día {d}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center gap-1">
+                <span className="text-slate-500 font-semibold">Hora:</span>
+                <select
+                  value={filterHour}
+                  onChange={(e) => setFilterHour(Number(e.target.value))}
+                  className="bg-slate-900 text-white rounded-lg px-2 py-1 border border-slate-700"
+                >
+                  {Array.from({ length: 24 }, (_, i) => i).map((h) => (
+                    <option key={h} value={h}>{h}:00</option>
+                  ))}
+                </select>
               </div>
             </div>
           </div>
 
-          {/* 1. Vista 24 Horas */}
-          {timeTab === '24h' && (
-            <div className="space-y-2">
-              <span className="text-xs text-slate-400">Variación horaria prevista del índice ({livestockMode === 'dairy' ? 'DHLI' : 'HLI'}):</span>
-              <div className="h-56 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={hourlyData}>
-                    <defs>
-                      <linearGradient id="dhliGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10B981" stopOpacity={0.8}/>
-                        <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                    <XAxis dataKey="label" stroke="#94A3B8" fontSize={11} />
-                    <YAxis domain={[0, livestockMode === 'dairy' ? 100 : 120]} stroke="#94A3B8" fontSize={11} />
-                    <Tooltip contentStyle={{ backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '12px', fontSize: '12px' }} />
-                    <Area type="monotone" dataKey="DHLI" stroke="#10B981" fillOpacity={1} fill="url(#dhliGrad)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
+          {/* Gráfica con Línea Roja Discontinua de Umbral */}
+          <div className="space-y-2">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-slate-400">Variación horaria del índice (próximas 24 horas):</span>
+              <span className="text-red-400 font-bold flex items-center gap-1">
+                --- Umbral crítico ({thresholdLineValue} {livestockMode === 'dairy' ? 'DHLI' : 'HLI'})
+              </span>
             </div>
-          )}
-
-          {/* 2. Vista 7 Días */}
-          {timeTab === '7d' && (
-            <div className="space-y-2">
-              <span className="text-xs text-slate-400">Pico máximo esperado en la semana:</span>
-              <div className="h-56 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dailyData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                    <XAxis dataKey="label" stroke="#94A3B8" fontSize={11} />
-                    <YAxis domain={[0, livestockMode === 'dairy' ? 100 : 120]} stroke="#94A3B8" fontSize={11} />
-                    <Tooltip contentStyle={{ backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '12px', fontSize: '12px' }} />
-                    <Bar dataKey="DHLI_Max" fill="#F59E0B" radius={[6, 6, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+            <div className="h-60 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={hourlyData}>
+                  <defs>
+                    <linearGradient id="dhliGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={livestockMode === 'dairy' ? '#10B981' : '#EF4444'} stopOpacity={0.8}/>
+                      <stop offset="95%" stopColor={livestockMode === 'dairy' ? '#10B981' : '#EF4444'} stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                  <XAxis dataKey="label" stroke="#94A3B8" fontSize={11} />
+                  <YAxis domain={[0, livestockMode === 'dairy' ? 100 : 120]} stroke="#94A3B8" fontSize={11} />
+                  <Tooltip contentStyle={{ backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '12px', fontSize: '12px' }} />
+                  <ReferenceLine y={thresholdLineValue} stroke="#EF4444" strokeDasharray="6 6" strokeWidth={2} />
+                  <Area type="monotone" dataKey="DHLI" stroke={livestockMode === 'dairy' ? '#10B981' : '#EF4444'} fillOpacity={1} fill="url(#dhliGrad)" />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
-          )}
-
-          {/* 3. Vista Drill-Down (Años -> Meses -> Días) */}
-          {timeTab === 'futuro' && (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-semibold bg-slate-950 p-2.5 rounded-xl border border-slate-800">
-                <div className="flex items-center gap-2">
-                  <button onClick={() => { setSelectedYear(null); setSelectedMonth(null); }} className={!selectedYear ? 'text-emerald-400 font-bold' : 'text-slate-400 hover:text-white'}>
-                    🌐 {t.yearsLabel} (2020 – {maxYearLimit})
-                  </button>
-                  {selectedYear && (
-                    <>
-                      <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-                      <button onClick={() => setSelectedMonth(null)} className={!selectedMonth ? 'text-emerald-400 font-bold' : 'text-slate-400 hover:text-white'}>
-                        📅 {t.yearLabel} {selectedYear.year}
-                      </button>
-                    </>
-                  )}
-                  {selectedMonth && (
-                    <>
-                      <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-                      <span className="text-emerald-400 font-bold">🗓️ {t.monthLabel} {selectedMonth.mes}</span>
-                    </>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-1 text-[11px] text-slate-400">
-                  <span>{t.horizonLabel}</span>
-                  {[2050, 2075, 2100].map((horizonte) => (
-                    <button key={horizonte} onClick={() => setMaxYearLimit(horizonte)} className={`px-2 py-0.5 rounded ${maxYearLimit === horizonte ? 'bg-emerald-600 text-white font-bold' : 'bg-slate-900 hover:bg-slate-800 text-slate-400'}`}>
-                      {horizonte}
-                    </button>
-                  ))}
-                  {(selectedYear || selectedMonth) && (
-                    <button onClick={() => { setSelectedYear(null); setSelectedMonth(null); }} className="ml-2 text-xs text-slate-300 hover:text-white flex items-center gap-1 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
-                      <RotateCcw className="w-3 h-3" /> {t.allYearsBtn}
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* NIVEL 1: Años */}
-              {!selectedYear && (
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center text-xs text-slate-400">
-                    <span>Haz clic en cualquier año para desglosar sus 12 meses:</span>
-                    <span className="text-emerald-400 font-semibold">Modelo {scenario.toUpperCase()} (IPCC)</span>
-                  </div>
-                  <div className="h-60 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={yearsList} onClick={(e: any) => { if (e?.activePayload?.[0]?.payload) setSelectedYear(e.activePayload[0].payload); }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                        <XAxis dataKey="year" stroke="#94A3B8" fontSize={11} />
-                        <YAxis domain={[0, livestockMode === 'dairy' ? 100 : 120]} stroke="#94A3B8" fontSize={11} />
-                        <Tooltip contentStyle={{ backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '12px', fontSize: '12px' }} />
-                        <Line type="monotone" dataKey="DHLI_Anual" stroke="#EC4899" strokeWidth={3} dot={{ r: 3, cursor: 'pointer' }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 pt-2 max-h-24 overflow-y-auto">
-                    {yearsList.map((yItem) => (
-                      <button key={yItem.year} onClick={() => setSelectedYear(yItem)} className="px-2.5 py-1 bg-slate-950 hover:bg-emerald-600 hover:text-white text-slate-300 rounded-lg text-xs border border-slate-800 transition">
-                        {yItem.year}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* NIVEL 2: Meses */}
-              {selectedYear && !selectedMonth && (
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center text-xs text-slate-400">
-                    <span>Año <strong>{selectedYear.year}</strong> &mdash; Haz clic en un mes para ver sus 30 días:</span>
-                    <span className="text-amber-400 font-semibold">Días críticos estimados: {selectedYear.Dias_Estres} días/año</span>
-                  </div>
-                  <div className="h-60 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={selectedYear.months} onClick={(e: any) => { if (e?.activePayload?.[0]?.payload) setSelectedMonth(e.activePayload[0].payload); }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                        <XAxis dataKey="mes" stroke="#94A3B8" fontSize={11} />
-                        <YAxis domain={[0, livestockMode === 'dairy' ? 100 : 120]} stroke="#94A3B8" fontSize={11} />
-                        <Tooltip contentStyle={{ backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '12px', fontSize: '12px' }} />
-                        <Bar dataKey="DHLI_Promedio" fill="#3B82F6" radius={[6, 6, 0, 0]} cursor="pointer" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <div className="grid grid-cols-4 md:grid-cols-6 gap-2 pt-1">
-                    {selectedYear.months.map((mItem: any) => (
-                      <button key={mItem.mes} onClick={() => setSelectedMonth(mItem)} className="p-2 bg-slate-950 hover:bg-blue-600 rounded-xl text-xs border border-slate-800 transition text-center">
-                        <div className="font-bold text-white">{mItem.mes}</div>
-                        <div className="text-[10px] text-slate-400">{mItem.DHLI_Promedio} {livestockMode === 'dairy' ? 'DHLI' : 'HLI'}</div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* NIVEL 3: Días */}
-              {selectedYear && selectedMonth && (
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center text-xs text-slate-400">
-                    <span>Desglose diario para <strong>{selectedMonth.mes} {selectedYear.year}</strong>:</span>
-                    <span className="text-emerald-400 font-semibold">Promedio mensual: {selectedMonth.DHLI_Promedio} {livestockMode === 'dairy' ? 'DHLI' : 'HLI'}</span>
-                  </div>
-                  <div className="h-60 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={selectedMonth.days}>
-                        <defs>
-                          <linearGradient id="dayGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#F59E0B" stopOpacity={0.8}/>
-                            <stop offset="95%" stopColor="#F59E0B" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                        <XAxis dataKey="dia" stroke="#94A3B8" fontSize={10} interval={2} />
-                        <YAxis domain={[0, livestockMode === 'dairy' ? 100 : 120]} stroke="#94A3B8" fontSize={11} />
-                        <Tooltip contentStyle={{ backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '12px', fontSize: '12px' }} />
-                        <Area type="monotone" dataKey="DHLI" stroke="#F59E0B" fillOpacity={1} fill="url(#dayGrad)" />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              )}
-
-            </div>
-          )}
-
+          </div>
         </div>
 
       </div>
 
-      {/* Asistente Zootécnico IA Flotante (Consciente del Contexto y Guía de Uso) */}
+      {/* MODAL DE ADMINISTRACIÓN DE ANUNCIOS Y FOTOS EN VIVO */}
+      {showNewsAdminModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-emerald-500/40 rounded-3xl max-w-2xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="font-bold text-sm text-white flex items-center gap-2">
+                <PlusCircle className="w-5 h-5 text-emerald-400" /> Administración de anuncios y noticias en vivo
+              </h3>
+              <button onClick={() => setShowNewsAdminModal(false)} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+
+            {/* Formulario de publicación */}
+            <form onSubmit={handleAddNewsItem} className="space-y-3 text-xs">
+              <div>
+                <label className="text-slate-400 block mb-1">Título de la noticia o anuncio:</label>
+                <input
+                  type="text"
+                  placeholder="Ej. Resultados de siembra de sombra en La Ceja"
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-slate-400 block mb-1">Categoría:</label>
+                  <select
+                    value={newCategory}
+                    onChange={(e) => setNewCategory(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                  >
+                    <option value="Noticia">Noticia</option>
+                    <option value="Investigación">Investigación</option>
+                    <option value="Evento ganadero">Evento ganadero</option>
+                    <option value="Publicidad">Publicidad / Producto</option>
+                    <option value="Manejo en potrero">Manejo en potrero</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-slate-400 block mb-1">Foto (desde tu computador o celular):</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    ref={newsImageInputRef}
+                    onChange={handleImageFileChange}
+                    className="w-full text-slate-400 text-xs file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:bg-emerald-600 file:text-white file:cursor-pointer"
+                  />
+                </div>
+              </div>
+
+              {newImagePreview && (
+                <div className="h-28 w-full rounded-xl overflow-hidden border border-emerald-500/40 relative">
+                  <img src={newImagePreview} alt="Previsualización" className="w-full h-full object-cover" />
+                </div>
+              )}
+
+              <div>
+                <label className="text-slate-400 block mb-1">Resumen o descripción:</label>
+                <textarea
+                  rows={3}
+                  placeholder="Escribe el texto descriptivo del anuncio..."
+                  value={newSummary}
+                  onChange={(e) => setNewSummary(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl transition shadow-lg"
+              >
+                Publicar en el carrusel
+              </button>
+            </form>
+
+            {/* Lista de anuncios publicados con opción de eliminar */}
+            <div className="pt-4 border-t border-slate-800 space-y-2">
+              <span className="text-xs font-bold text-slate-300 block">Anuncios activos actualmente ({newsList.length}):</span>
+              <div className="max-h-48 overflow-y-auto space-y-2">
+                {newsList.map((item) => (
+                  <div key={item.id} className="p-2.5 bg-slate-950 rounded-xl border border-slate-800 flex justify-between items-center gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <img src={item.imageUrl} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" />
+                      <div className="min-w-0">
+                        <div className="font-semibold text-white text-xs truncate">{item.title}</div>
+                        <div className="text-[10px] text-emerald-400">{item.category}</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleDeleteNewsItem(item.id)}
+                      className="p-1.5 bg-red-950 hover:bg-red-800 text-red-300 rounded-lg shrink-0 transition"
+                      title="Eliminar anuncio"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* Modal del Manual con Carga de PDF en Vivo */}
+      {showManualModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-2xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="font-bold text-base text-white flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-blue-400" /> Manual de usuario e interpretación
+              </h3>
+              <button onClick={() => setShowManualModal(false)} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+
+            <div className="space-y-3 text-xs text-slate-300 leading-relaxed">
+              <p><strong>1. Búsqueda y localización:</strong> Puedes localizar tu predio escribiendo el nombre del municipio, activando el sensor GPS del dispositivo o introduciendo coordenadas geográficas.</p>
+              <p><strong>2. Interpretación de índices:</strong></p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li><strong>Leche (DHLI):</strong> Valores inferiores a 25 indican confort térmico. Valores superiores a 25 implican el inicio de jadeo respiratorio y merma progresiva en la síntesis de leche.</li>
+                <li><strong>Carne (HLI):</strong> Valores inferiores a 70 representan termoneutralidad. Por encima del umbral racial (86 a 93) disminuye la ganancia de peso y el consumo de materia seca.</li>
+              </ul>
+              <p><strong>3. Mitigación por sombra:</strong> Al activar el botón de sombra se simula una reducción del 80% en la radiación solar incidente, mostrando la disminución en temperatura de globo negro y el ahorro productivo.</p>
+            </div>
+
+            <div className="pt-3 border-t border-slate-800 flex flex-wrap justify-between items-center gap-3">
+              <label className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs font-semibold cursor-pointer flex items-center gap-1.5 transition">
+                <Upload className="w-4 h-4 text-emerald-400" /> Subir archivo PDF del manual
+                <input type="file" accept="application/pdf" className="hidden" onChange={handleManualUpload} />
+              </label>
+
+              {manualPdfUrl ? (
+                <a
+                  href={manualPdfUrl}
+                  download="Manual_Usuario_DHLI.pdf"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-xl text-xs font-bold text-white flex items-center gap-1.5 shadow-lg"
+                >
+                  <Download className="w-4 h-4" /> Descargar manual en PDF
+                </a>
+              ) : (
+                <span className="text-[11px] text-slate-500">PDF listo para cargar</span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de la Calculadora Financiera */}
+      {showFinanceModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-amber-500/40 rounded-3xl max-w-2xl w-full p-6 space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="font-bold text-sm text-white flex items-center gap-2">
+                <DollarSign className="w-5 h-5 text-amber-400" /> Calculadora de pérdidas y retorno de inversión (ROI)
+              </h3>
+              <button onClick={() => setShowFinanceModal(false)} className="text-slate-400 hover:text-white">✕</button>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+              <div>
+                <label className="text-slate-400 block mb-1">Animales en lote:</label>
+                <input type="number" min="1" value={animalCount} onChange={(e) => setAnimalCount(Number(e.target.value))} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono" />
+              </div>
+              <div>
+                <label className="text-slate-400 block mb-1">Precio unitario:</label>
+                <input type="number" min="0" value={unitPrice} onChange={(e) => setUnitPrice(Number(e.target.value))} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono" />
+              </div>
+              <div>
+                <label className="text-slate-400 block mb-1">Moneda:</label>
+                <select value={currencySymbol} onChange={(e) => setCurrencySymbol(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white">
+                  <option value="COP ($)">COP ($)</option>
+                  <option value="USD ($)">USD ($)</option>
+                  <option value="BRL (R$)">BRL (R$)</option>
+                  <option value="EUR (€)">EUR (€)</option>
+                  <option value="MXN ($)">MXN ($)</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-slate-400 block mb-1">Costo de inversión:</label>
+                <input type="number" min="0" value={mitigationCost} onChange={(e) => setMitigationCost(Number(e.target.value))} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3 pt-2">
+              <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
+                <span className="text-[11px] text-slate-400 block">Pérdida diaria:</span>
+                <span className="text-xl font-bold text-amber-400">${dailyMoneyLost.toLocaleString()}</span>
+              </div>
+              <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
+                <span className="text-[11px] text-slate-400 block">Pérdida mensual:</span>
+                <span className="text-xl font-bold text-red-400">${monthlyMoneyLost.toLocaleString()}</span>
+              </div>
+              <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800">
+                <span className="text-[11px] text-slate-400 block">Retorno (ROI):</span>
+                <span className="text-xl font-bold text-emerald-400">{roiMonths} meses</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pie de Página Oficial con Autores y Enlaces ORCID */}
+      <footer className="border-t border-white/10 mt-12 pt-8 pb-12 bg-black/60 text-slate-400 text-xs">
+        <div className="max-w-7xl mx-auto px-4 md:px-8 space-y-6">
+          <div className="flex flex-wrap justify-between items-center gap-4">
+            <div className="space-y-1">
+              <span className="text-sm font-bold text-slate-200 block">Plataforma de predicción de estrés calórico bovino</span>
+              <span className="text-[11px] text-slate-500">Desarrollada para investigación zootécnica y toma de decisiones en campo</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button onClick={handleExportCSV} className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-semibold flex items-center gap-1.5 transition">
+                <Download className="w-3.5 h-3.5 text-emerald-400" /> Descargar datos (CSV)
+              </button>
+              <button onClick={() => window.print()} className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-semibold flex items-center gap-1.5 transition">
+                <Printer className="w-3.5 h-3.5 text-blue-400" /> Imprimir reporte (PDF)
+              </button>
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-white/10 space-y-2">
+            <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider block">Autores e investigación:</span>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <a
+                href="https://orcid.org/0000-0001-7064-6753"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-3 bg-slate-900/60 hover:bg-slate-800 rounded-2xl border border-white/5 transition flex items-center gap-2 group"
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-400 group-hover:animate-ping" />
+                <div>
+                  <div className="font-semibold text-slate-200">William Armando Tapie Canacuan</div>
+                  <div className="text-[10px] text-slate-400 flex items-center gap-1">ORCID: 0000-0001-7064-6753 <ExternalLink className="w-2.5 h-2.5" /></div>
+                </div>
+              </a>
+
+              <a
+                href="https://orcid.org/0001-6651-3819"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-3 bg-slate-900/60 hover:bg-slate-800 rounded-2xl border border-white/5 transition flex items-center gap-2 group"
+              >
+                <span className="w-2 h-2 rounded-full bg-blue-400 group-hover:animate-ping" />
+                <div>
+                  <div className="font-semibold text-slate-200">Carlos Eduardo Giraldo Sanchez</div>
+                  <div className="text-[10px] text-slate-400 flex items-center gap-1">ORCID: 0001-6651-3819 <ExternalLink className="w-2.5 h-2.5" /></div>
+                </div>
+              </a>
+
+              <a
+                href="https://orcid.org/0009-0002-0122-8667"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-3 bg-slate-900/60 hover:bg-slate-800 rounded-2xl border border-white/5 transition flex items-center gap-2 group"
+              >
+                <span className="w-2 h-2 rounded-full bg-amber-400 group-hover:animate-ping" />
+                <div>
+                  <div className="font-semibold text-slate-200">Juan Fernando Manrique Hincapie</div>
+                  <div className="text-[10px] text-slate-400 flex items-center gap-1">ORCID: 0009-0002-0122-8667 <ExternalLink className="w-2.5 h-2.5" /></div>
+                </div>
+              </a>
+            </div>
+          </div>
+        </div>
+      </footer>
+
+      {/* Asistente Zootécnico IA */}
       <AiChatbot
         context={{
           placeName,

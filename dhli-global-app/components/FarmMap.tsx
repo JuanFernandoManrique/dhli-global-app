@@ -7,7 +7,7 @@ interface FarmMapProps {
   lat: number;
   lon: number;
   onLocationChange: (lat: number, lon: number) => void;
-  heatLevel?: number; // Valor del índice para modular el mapa de calor
+  heatLevel?: number;
 }
 
 function ChangeView({ center }: { center: [number, number] }) {
@@ -42,7 +42,6 @@ export default function FarmMap({ lat, lon, onLocationChange, heatLevel = 45 }: 
     setIcon(customIcon);
   }, []);
 
-  // Determinar color de la isolínea térmica según el nivel de estrés
   const heatColor = heatLevel < 25 ? '#10B981' : heatLevel < 50 ? '#FBBF24' : heatLevel < 75 ? '#F97316' : '#EF4444';
 
   return (
@@ -55,7 +54,7 @@ export default function FarmMap({ lat, lon, onLocationChange, heatLevel = 45 }: 
         className="w-full h-full"
       >
         <LayersControl position="topright">
-          <LayersControl.BaseLayer checked name="Google Satélite (Híbrido HD)">
+          <LayersControl.BaseLayer checked name="Google satélite (Híbrido HD)">
             <TileLayer
               attribution="&copy; Google Maps Satelital"
               url="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"
@@ -64,7 +63,7 @@ export default function FarmMap({ lat, lon, onLocationChange, heatLevel = 45 }: 
             />
           </LayersControl.BaseLayer>
 
-          <LayersControl.BaseLayer name="Google Satélite (Puro)">
+          <LayersControl.BaseLayer name="Google satélite (Puro)">
             <TileLayer
               attribution="&copy; Google Maps Satelital"
               url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
@@ -73,23 +72,23 @@ export default function FarmMap({ lat, lon, onLocationChange, heatLevel = 45 }: 
             />
           </LayersControl.BaseLayer>
 
-          {/* Capa de Mapa de Calor Térmico Dinámica (Estilo Windy / Isolíneas de Radiación) */}
-          <LayersControl.Overlay checked name="🌡️ Capa Térmica de Estrés (Windy Style)">
+          {/* DESMARCADO POR DEFECTO: El usuario decide cuándo encender la capa de calor */}
+          <LayersControl.Overlay name="Capa térmica de estrés">
             <>
               <Circle
                 center={[lat, lon]}
                 radius={900}
-                pathOptions={{ color: heatColor, fillColor: heatColor, fillOpacity: 0.18, weight: 1.5, dashArray: '4, 8' }}
+                pathOptions={{ color: heatColor, fillColor: heatColor, fillOpacity: 0.16, weight: 1.5, dashArray: '4, 8' }}
               />
               <Circle
                 center={[lat, lon]}
                 radius={450}
-                pathOptions={{ color: heatColor, fillColor: heatColor, fillOpacity: 0.28, weight: 2 }}
+                pathOptions={{ color: heatColor, fillColor: heatColor, fillOpacity: 0.25, weight: 2 }}
               />
               <Circle
                 center={[lat, lon]}
                 radius={180}
-                pathOptions={{ color: heatColor, fillColor: heatColor, fillOpacity: 0.42, weight: 3 }}
+                pathOptions={{ color: heatColor, fillColor: heatColor, fillOpacity: 0.38, weight: 3 }}
               />
             </>
           </LayersControl.Overlay>
@@ -100,9 +99,9 @@ export default function FarmMap({ lat, lon, onLocationChange, heatLevel = 45 }: 
         {icon && <Marker position={[lat, lon]} icon={icon} />}
       </MapContainer>
 
-      <div className="absolute top-4 left-4 z-[400] bg-black/85 backdrop-blur-md px-4 py-2.5 rounded-2xl text-white text-xs border border-white/10 pointer-events-none flex items-center gap-2.5">
-        <span className="w-2.5 h-2.5 rounded-full animate-ping" style={{ backgroundColor: heatColor }} />
-        <span>Satélite HD con isolíneas de calor dinámicas activadas</span>
+      <div className="absolute top-4 left-4 z-[400] bg-black/80 backdrop-blur-md px-4 py-2 rounded-xl text-white text-xs border border-white/10 pointer-events-none flex items-center gap-2">
+        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+        Satélite de alta resolución: haz clic en cualquier potrero para reubicar el pin
       </div>
     </div>
   );

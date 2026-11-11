@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { ZoomOut, RotateCcw } from 'lucide-react';
 
 const Globe = dynamic(() => import('react-globe.gl'), { ssr: false });
 
@@ -55,10 +56,7 @@ export default function EarthGlobe({ onSelectLocation, selectedCoords, lang = 'e
     if (globeRef.current) {
       if (selectedCoords) {
         globeRef.current.controls().autoRotate = false;
-        globeRef.current.pointOfView(
-          { lat: selectedCoords.lat, lng: selectedCoords.lng, altitude: 0.35 },
-          1200
-        );
+        globeRef.current.pointOfView({ lat: selectedCoords.lat, lng: selectedCoords.lng, altitude: 0.35 }, 1200);
       } else {
         globeRef.current.controls().autoRotate = true;
         globeRef.current.controls().autoRotateSpeed = 0.6;
@@ -66,10 +64,18 @@ export default function EarthGlobe({ onSelectLocation, selectedCoords, lang = 'e
     }
   }, [selectedCoords, mounted]);
 
+  // Función para restablecer la vista global y alejar la cámara
+  const handleResetView = () => {
+    if (globeRef.current) {
+      globeRef.current.pointOfView({ lat: 10, lng: -60, altitude: 2.2 }, 1500);
+      globeRef.current.controls().autoRotate = true;
+    }
+  };
+
   if (!mounted) {
     return (
       <div className="h-[480px] w-full bg-slate-950 flex items-center justify-center text-slate-500 rounded-3xl border border-slate-800">
-        Cargando Globo 3D...
+        Cargando globo 3D...
       </div>
     );
   }
@@ -91,7 +97,6 @@ export default function EarthGlobe({ onSelectLocation, selectedCoords, lang = 'e
         globeImageUrl="//unpkg.com/three-globe/example/img/earth-blue-marble.jpg"
         bumpImageUrl="//unpkg.com/three-globe/example/img/earth-topology.png"
         backgroundImageUrl="//unpkg.com/three-globe/example/img/night-sky.png"
-        
         htmlElementsData={htmlMarkers}
         htmlLat="lat"
         htmlLng="lng"
@@ -101,7 +106,7 @@ export default function EarthGlobe({ onSelectLocation, selectedCoords, lang = 'e
           if (d.type === 'country') {
             el.innerHTML = `
               <div style="transform: translate(-50%, -50%); pointer-events: none; white-space: nowrap;">
-                <span style="color: rgba(255, 255, 255, 0.9); font-size: 11px; font-weight: 700; text-shadow: 0 1px 4px rgba(0,0,0,0.9), 0 0 2px rgba(0,0,0,0.8); font-family: sans-serif; letter-spacing: 0.3px;">
+                <span style="color: rgba(255, 255, 255, 0.9); font-size: 11px; font-weight: 700; text-shadow: 0 1px 4px rgba(0,0,0,0.9); font-family: sans-serif;">
                   ${d.name}
                 </span>
               </div>
@@ -119,7 +124,6 @@ export default function EarthGlobe({ onSelectLocation, selectedCoords, lang = 'e
           }
           return el;
         }}
-
         onGlobeClick={({ lat, lng }) => {
           if (globeRef.current) {
             globeRef.current.controls().autoRotate = false;
@@ -128,10 +132,19 @@ export default function EarthGlobe({ onSelectLocation, selectedCoords, lang = 'e
           onSelectLocation(lat, lng);
         }}
       />
+
       <div className="absolute top-4 left-4 bg-black/75 backdrop-blur-md px-4 py-2 rounded-xl text-white text-xs border border-white/10 pointer-events-none flex items-center gap-2">
         <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
         Haz clic en cualquier país o región del globo para iniciar el análisis
       </div>
+
+      {/* Botón para alejar y restablecer vista global */}
+      <button
+        onClick={handleResetView}
+        className="absolute bottom-4 right-4 bg-slate-900/90 hover:bg-slate-800 text-white px-3 py-2 rounded-xl text-xs font-semibold border border-slate-700 shadow-xl flex items-center gap-1.5 transition"
+      >
+        <ZoomOut className="w-4 h-4 text-emerald-400" /> Restablecer vista global
+      </button>
     </div>
   );
 }

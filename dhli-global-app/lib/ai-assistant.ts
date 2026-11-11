@@ -25,79 +25,70 @@ export function generateAiResponse(userMessage: string, ctx: ChatContext): strin
   const indexName = isDairy ? 'DHLI' : 'HLI';
   const breedName = isDairy ? ctx.dairyBreed.toUpperCase() : ctx.beefBreed.toUpperCase();
 
-  // 1. GUÍA DE USO DE LA PLATAFORMA (CÓMO USAR CADA HERRAMIENTA)
-  if (q.includes('como usar') || q.includes('cómo usar') || q.includes('ayuda') || q.includes('plataforma') || q.includes('funciona') || q.includes('instrucciones')) {
-    return `🖥️ **GUÍA COMPLETA DE USO DE LA PLATAFORMA:**
+  // 1. Ayuda sobre cómo usar la plataforma
+  if (q.includes('como usar') || q.includes('cómo usar') || q.includes('ayuda') || q.includes('plataforma') || q.includes('manual') || q.includes('buscar')) {
+    return `Guía de uso de la plataforma:
 
-1. **🥛 Leche vs 🥩 Carne:** Conmuta en la barra superior entre el modelo lácteo (**DHLI de Lees et al., 2018**) y el modelo de carne (**HLI de Gaughan et al., 2008**).
-2. **🌍 Búsqueda de tu predio:**
-   * **Buscador:** Escribe el municipio, vereda o país y selecciónalo.
-   * **GPS:** Toca el botón verde *GPS* para usar tu ubicación actual en el potrero.
-   * **Coordenadas:** Ingresa latitud y longitud manuales en grados decimales.
-3. **🗺️ Visor Globo 3D vs Satélite 2D:**
-   * **Globo 3D:** Gira el planeta para análisis global y visualización de países.
-   * **Satélite 2D:** Haz zoom profundo hasta ver los potreros, cercas y establos de tu finca. Muestra isolíneas térmicas en tiempo real.
-4. **☀️ A pleno sol vs 🌳 Con sombra:** Toca este botón para simular cómo colocar mallas o árboles (80% atenuación solar) reduce la temperatura de globo negro y previene pérdidas de leche/carne.
-5. **⚙️ Configuración del hato:** Ajusta la raza (*Holstein, Jersey, Girolando, Doble propósito* en leche; *Angus, Brangus, Brahman* en carne) y el nivel productivo para recalibrar los umbrales fisiológicos.
-6. **💰 Calculadora de pérdidas ($):** Ingresa tu número de animales y el precio por litro/kilo para calcular el dinero perdido y el Retorno de Inversión (ROI) de sombras o ventiladores.
-7. **📈 Módulo Temporal:** Explora la curva de hoy (24 h), el pronóstico de la semana (7 d) y las proyecciones climáticas multianuales del IPCC hasta 2100.
-8. **📲 WhatsApp y Reportes:** Envía en 1 clic el parte meteorológico al mayordomo o imprime el PDF técnico.`;
+1. Selección de producción: Usa el selector superior para alternar entre leche (DHLI) y carne (HLI).
+2. Localización de la finca: Puedes escribir el nombre del municipio en el buscador, tocar el botón GPS para ubicarte automáticamente en el potrero o ingresar coordenadas manuales de latitud y longitud.
+3. Vistas de mapa: Conmuta entre el globo 3D y el satélite 2D de alta resolución para ver los potreros y establos de tu predio.
+4. Activación de capas: En el mapa satelital puedes encender la capa térmica de estrés cuando lo consideres necesario desde el ícono de capas.
+5. Botón de sombra: Simula la reducción de radiación del 80% al proporcionar árboles o mallas en tu predio.
+6. Calculadora financiera: Ubicada en la parte superior para proyectar el dinero en riesgo y el tiempo de recuperación de inversiones en infraestructura.
+7. Filtro temporal en 4 clics: Selecciona directamente el año, mes, día y hora en el panel predictivo inferior.`;
   }
 
-  // 2. Cómo usar las Coordenadas y el GPS
-  if (q.includes('coordenada') || q.includes('gps') || q.includes('buscar')) {
-    return `📍 **CÓMO UBICAR TU PREDIO:**
-* Si estás en la finca con tu celular o portátil, haz clic en **"Mi ubicación (GPS)"** y acepta el permiso del navegador.
-* Si conoces las coordenadas, toca **"Coordenadas"**, escribe la latitud (ej. 6.15) y longitud (ej. -75.36) y presiona *Ir a coordenadas*.
-* O simplemente escribe el nombre de tu municipio en la barra de búsqueda superior.`;
-  }
+  // 2. Medidas de emergencia según severidad
+  if (q.includes('emergencia') || q.includes('hacer') || q.includes('medida') || q.includes('recomiend') || q.includes('calor')) {
+    if (ctx.indexVal >= (isDairy ? 75 : 86)) {
+      return `Alerta de sobrecarga térmica crítica en ${ctx.placeName}:
+El índice ${indexName} se sitúa en ${ctx.indexVal} (${ctx.category}). La disipación de calor está severamente comprometida en animales ${breedName}.
 
-  // 3. Cómo usar el Simulador de Sombra y ROI
-  if (q.includes('como funciona la sombra') || q.includes('calculadora') || q.includes('roi')) {
-    return `💰 **CÓMO USAR LA CALCULADORA Y LA SOMBRA:**
-* **Botón de Sombra:** Al activarlo, la plataforma aplica la ecuación de Dimiceli & Piltz (2011) reduciendo el 80% de la radiación solar. Verás cómo la BGT cae de inmediato entre 4°C y 7°C.
-* **Calculadora Financiera ($):** Haz clic en el botón amarillo. Ingresa cuántas vacas tienes en ordeño y a cómo te pagan el litro de leche. El sistema calculará en cuántos meses se paga solo un techo o sistema de aspersión con la leche que salvas.`;
-  }
+Protocolo de mitigación inmediata:
+- Enfriamiento forzado: Aplica ciclos de aspersión con gota gruesa durante 30 a 45 minutos combinados con ventilación forzada en el corral de espera antes del ordeño.
+- Hidratación: Garantiza un flujo mínimo de 15 a 20 litros por animal cada hora con agua a temperatura menor a 20 °C en bebederos sombreados.
+- Manejo de ración: Suspende el suministro de concentrado entre las 11:00 y las 15:30. Traslada la mayor fracción de la dieta hacia las horas de la tarde y noche para disipar el incremento calórico de la digestión.`;
+    } else if (ctx.indexVal >= (isDairy ? 50 : 77)) {
+      return `Condición de estrés moderado a alto en ${ctx.placeName}:
+El índice ${indexName} es de ${ctx.indexVal} (${ctx.category}), con una merma productiva estimada en ${ctx.loss} ${isDairy ? 'litros/vaca/día' : 'kg/animal/día'}.
 
-  // 4. Recomendaciones de Emergencia / Fisiología
-  if (q.includes('emergencia') || q.includes('hacer') || q.includes('accion') || q.includes('medida') || q.includes('recomiend')) {
-    if (ctx.indexVal >= 75) {
-      return `🚨 **ALERTA CRÍTICA EN ${ctx.placeName.toUpperCase()}:**
-Actualmente el índice ${indexName} está en **${ctx.indexVal}** (${ctx.category}). La carga térmica sobrepasa la capacidad de disipación de tus animales ${breedName}.
-
-**Acciones inmediatas recomendadas (Lees et al. 2018 / Berman 2005):**
-1. **Enfriamiento forzado en corral:** Activa ciclos de aspersión con gota gruesa (15-20 litros/vaca/hora) combinados con ventilación forzada en corrales de espera antes del ordeño.
-2. **Agua de bebida:** Garantiza agua fresca (< 20°C) y sombra sobre los bebederos.
-3. **Manejo de ración:** No suministres concentrado entre las 11:00 y las 15:00. Traslada la mayor parte de la ración a la tarde/noche para evitar el calor de fermentación en las horas pico.`;
-    } else if (ctx.indexVal >= 50) {
-      return `⚠️ **PRECAUCIÓN EN ${ctx.placeName.toUpperCase()}:**
-El índice ${indexName} se ubica en **${ctx.indexVal}** (${ctx.category}). Pérdida estimada: **${ctx.loss} ${isDairy ? 'L/vaca/día' : 'kg/animal/día'}**.
-
-1. ${ctx.hasShade ? '✅ Tienes sombra activada (80% interceptación). Mantén el acceso continuo.' : '☀️ Los animales están a pleno sol. Habilita sombras o silvopastoreo para bajar el estrés.'}
-2. Suministra agua abundante y fresca cerca de las zonas de pastoreo.`;
+Recomendaciones zootécnicas:
+- Sombras: ${ctx.hasShade ? 'La mitigación por sombra está activa en tu análisis. Asegura el libre acceso en potreros.' : 'Los animales se encuentran a pleno sol. Habilita mallas o áreas con silvopastoreo para bajar la temperatura de globo negro.'}
+- Suplementación mineral: Aumenta los electrolitos (sodio y potasio) para compensar pérdidas por transpiración y jadeo.`;
     } else {
-      return `✅ **CONDICIONES DE CONFORT EN ${ctx.placeName}:**
-El índice ${indexName} es **${ctx.indexVal}** (${ctx.category}). Las vacas se encuentran en su rango de termoneutralidad homeotérmica. Mantén el manejo rutinario normal.`;
+      return `Condición de confort térmico en ${ctx.placeName}:
+El índice ${indexName} se encuentra en ${ctx.indexVal} (${ctx.category}). Los animales se encuentran en equilibrio homeotérmico normal. Mantén las rutinas habituales de pastoreo y suministro de agua.`;
     }
   }
 
-  // 5. Horarios de Pastoreo
-  if (q.includes('hora') || q.includes('horario') || q.includes('pastoreo') || q.includes('alimentar')) {
-    return `⏰ **HORARIOS RECOMENDADOS HOY EN ${ctx.placeName.toUpperCase()}:**
-* 🌅 **Pastoreo matutino:** 05:30 a 09:30 (Ventana térmica segura).
-* ☀️ **Encierro en sombra / corral:** 10:30 a 15:30 (Pico máximo de ${indexName}).
-* 🌇 **Pastoreo de tarde y noche:** 16:30 a 22:00.
-* 🌙 **Recuperación nocturna:** Se registraron **${ctx.nightCoolingHours} horas** de enfriamiento nocturno favorable.`;
+  // 3. Alimentación y ración
+  if (q.includes('comida') || q.includes('dieta') || q.includes('racion') || q.includes('alimentar') || q.includes('nutricion')) {
+    return `Estrategia nutricional ante estrés calórico:
+- Modificación de horarios: Ofrece el 60% al 70% del alimento fibroso y suplementos concentrados entre las 18:00 y las 05:00 horas, aprovechando las ${ctx.nightCoolingHours} horas de enfriamiento nocturno registradas en tu predio.
+- Densidad energética: Aumenta la concentración energética de la ración mediante grasas sobrepasantes o almidones de alta digestibilidad para compensar la caída voluntaria de consumo de materia seca sin sobrecargar el rumen.`;
   }
 
-  // 6. Respuesta General
-  return `🐄 **ASESOR ZOOTÉCNICO & GUÍA DEL SISTEMA:**
-En **${ctx.placeName}**, el índice **${indexName}** actual es **${ctx.indexVal}** (${ctx.category}).
-Pérdida productiva estimada: **${ctx.loss} ${isDairy ? 'L/vaca/día' : 'kg/animal/día'}** en ganado ${breedName}.
+  // 4. Razas y genética
+  if (q.includes('raza') || q.includes('holstein') || q.includes('girolando') || q.includes('jersey') || q.includes('angus') || q.includes('brahman')) {
+    return `Tolerancia genética y características raciales:
+- Holstein y Angus: Presentan una tasa metabólica elevada y mayor susceptibilidad al estrés por calor; inician caídas en producción a umbrales menores.
+- Jersey: Posee mayor relación entre superficie corporal y masa, tolerando cargas térmicas más altas antes de manifestar mermas severas.
+- Girolando y Brahman: Incorporan genes adaptados al trópico con mayor densidad folicular y glándulas sudoríparas más eficientes, manteniendo el consumo y estabilidad térmica en climas cálidos.`;
+  }
 
-**¿Qué deseas consultar?**
-1. Escribe *"¿Cómo uso la plataforma?"* para ver la guía de funciones.
-2. Escribe *"¿Qué medidas de emergencia debo tomar hoy?"*.
-3. Escribe *"¿Cuáles son los mejores horarios de pastoreo?"*.
-4. Escribe *"¿Cómo funciona la calculadora de ROI?"*.`;
+  // 5. Horarios de pastoreo
+  if (q.includes('hora') || q.includes('horario') || q.includes('pastoreo') || q.includes('encierro')) {
+    return `Horarios sugeridos de manejo para hoy en ${ctx.placeName}:
+- Pastoreo seguro: Desde las 05:30 hasta las 09:30 horas y después de las 16:30 horas.
+- Encierro en áreas sombreadas: Entre las 10:30 y las 15:30 horas, coincidiendo con la máxima radiación solar (${ctx.sr} W/m²).`;
+  }
+
+  // Respuesta general contextualizada
+  return `Asistente zootécnico en ${ctx.placeName}:
+Actualmente el índice ${indexName} se encuentra en ${ctx.indexVal} (${ctx.category}), con una temperatura de ${ctx.temp} °C y una radiación solar de ${ctx.sr} W/m².
+
+¿En qué puedo ayudarte?
+- Pregúntame: "¿Cómo usar la plataforma?" para conocer el manejo de cada herramienta.
+- Pregúntame: "¿Qué medidas inmediatas debo tomar hoy?".
+- Pregúntame: "¿Cuáles son los mejores horarios de pastoreo y alimentación?".`;
 }
