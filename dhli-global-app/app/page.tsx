@@ -15,6 +15,7 @@ import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianG
 
 const EarthGlobe = dynamic(() => import('../components/EarthGlobe'), { ssr: false });
 const FarmMap = dynamic(() => import('../components/FarmMap'), { ssr: false });
+const GlobalHeatMap = dynamic(() => import('../components/GlobalHeatMap'), { ssr: false });
 
 export default function HomePage() {
   const [lang, setLang] = useState<'es' | 'en' | 'pt'>('es');
@@ -161,7 +162,7 @@ export default function HomePage() {
     const name = item.display_name.split(',').slice(0, 3).join(', ');
     setSearchQuery('');
     setSearchResults([]);
-    setDrillLevel('hour'); // Abre por defecto en vista de 24 horas
+    setDrillLevel('hour');
     handleLocationUpdate(newLat, newLon, name);
   };
 
@@ -234,7 +235,7 @@ export default function HomePage() {
     const dateStr = `${selectedDay}/${selectedMonth + 1}/${selectedYear} - ${selectedHour}:00`;
     const indexName = livestockMode === 'dairy' ? 'DHLI' : 'HLI';
     const impactText = livestockMode === 'dairy'
-      ? `Pérdida esperada: -${(result as any).milkLoss} L/vaca/día (${dailyPhysicalLost.toFixed(0)} L/día en el lote)`
+      ? `Pérdida esperada: -${(result as any).milkLoss} L/vaca/día (${dailyPhysicalLost.toFixed(0)} L/día en hato)`
       : `Caída en ganancia: -${(result as any).adgLoss} kg/día/novillo`;
 
     const msg = `🚨 Alerta de estrés térmico bovino (${indexName})\n` +
@@ -245,7 +246,7 @@ export default function HomePage() {
       `💨 Clima: ${temp}°C | HR: ${rh}% | BGT: ${result.bgt}°C\n` +
       `📉 Impacto productivo: ${impactText}\n` +
       `💰 Pérdida económica: $${dailyMoneyLost.toLocaleString()} ${currencySymbol}/día\n` +
-      `🌱 Condición: ${hasShade ? 'Sombra mitigada (80%)' : 'A pleno sol'}\n\n` +
+      `🌱 Sombra: ${hasShade ? 'Mitigada (80%)' : 'A pleno sol'}\n\n` +
       `Plataforma oficial: https://dhli-global-app.vercel.app`;
 
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`);
@@ -265,7 +266,6 @@ export default function HomePage() {
     document.body.removeChild(link);
   };
 
-  // Autenticación de Administrador (PIN por defecto: 1234)
   const handleVerifyPin = (e: React.FormEvent) => {
     e.preventDefault();
     if (adminPin === '1234' || adminPin === 'admin2026') {
@@ -321,7 +321,7 @@ export default function HomePage() {
     } catch {}
   };
 
-  // DATOS DINÁMICOS SEGÚN NIVEL
+  // DATOS DINÁMICOS
   const getYearsList = () => {
     const startYear = 1980;
     const endYear = 2100;
@@ -351,7 +351,7 @@ export default function HomePage() {
   const getDaysList = () => {
     const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
     return Array.from({ length: daysInMonth }, (_, i) => ({
-      label: `${i + 1}`, // SOLO NÚMERO PARA NO SATURAR EL EJE X
+      label: `${i + 1}`, // SOLO NÚMERO
       val: Math.round(result.indexVal + Math.cos(i / 2.5) * 3),
       temp: +(temp + Math.cos(i / 2.5) * 1.5).toFixed(1),
       raw: i + 1
@@ -399,10 +399,9 @@ export default function HomePage() {
 
   const mesesNombres = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
   const thresholdLineValue = livestockMode === 'dairy' ? 25 : 77;
-  const themeColor = livestockMode === 'dairy' ? '#2563EB' : '#DC2626';
 
-  // Desplazamiento solar para el mapa térmico basado en el mes (estaciones científicas reales)
-  const solarLatitudeShift = Math.sin(((selectedMonth - 2.5) / 12) * 2 * Math.PI) * 23;
+  // COLOR DEL GRÁFICO: ESMERALDA LUMINOSO EN LECHE, ÁMBAR DORADO CÁLIDO EN CARNE
+  const lineColor = livestockMode === 'dairy' ? '#10B981' : '#F59E0B';
 
   return (
     <main className={`min-h-screen transition-colors duration-500 ${livestockMode === 'dairy' ? 'bg-[#F8FAFC]' : 'bg-[#FFFDFB]'} text-slate-800 font-sans`}>
@@ -420,7 +419,7 @@ export default function HomePage() {
             <div className="grid grid-cols-2 gap-4">
               <button
                 onClick={() => { setLivestockMode('dairy'); setUnitPrice(2200); setShowWelcomeSplash(false); }}
-                className="p-5 rounded-2xl border-2 border-blue-500/20 hover:border-blue-600 bg-blue-50/40 hover:bg-blue-50 transition text-left space-y-2 group"
+                className="p-5 rounded-2xl border-2 border-emerald-500/20 hover:border-emerald-600 bg-emerald-50/40 hover:bg-emerald-50 transition text-left space-y-2 group"
               >
                 <span className="text-3xl block group-hover:scale-110 transition">🥛</span>
                 <div className="font-bold text-slate-900 text-sm">Bovinos de leche</div>
@@ -429,7 +428,7 @@ export default function HomePage() {
 
               <button
                 onClick={() => { setLivestockMode('beef'); setUnitPrice(8500); setShowWelcomeSplash(false); }}
-                className="p-5 rounded-2xl border-2 border-rose-500/20 hover:border-rose-600 bg-rose-50/40 hover:bg-rose-50 transition text-left space-y-2 group"
+                className="p-5 rounded-2xl border-2 border-amber-500/20 hover:border-amber-600 bg-amber-50/40 hover:bg-amber-50 transition text-left space-y-2 group"
               >
                 <span className="text-3xl block group-hover:scale-110 transition">🥩</span>
                 <div className="font-bold text-slate-900 text-sm">Bovinos de carne</div>
@@ -450,7 +449,7 @@ export default function HomePage() {
               <span className="font-bold text-sm md:text-base text-slate-900 block leading-tight">
                 Monitor global de estrés térmico bovino
               </span>
-              <span className={`text-[11px] font-semibold ${livestockMode === 'dairy' ? 'text-blue-600' : 'text-rose-600'}`}>
+              <span className={`text-[11px] font-semibold ${livestockMode === 'dairy' ? 'text-emerald-600' : 'text-amber-600'}`}>
                 {livestockMode === 'dairy' ? 'Sistema lechero (DHLI - Lees et al., 2018)' : 'Sistema cárnico (HLI - Gaughan et al., 2008)'}
               </span>
             </div>
@@ -459,15 +458,15 @@ export default function HomePage() {
           <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200">
             <button
               onClick={() => { setLivestockMode('dairy'); setUnitPrice(2200); }}
-              className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${livestockMode === 'dairy' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
+              className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${livestockMode === 'dairy' ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
             >
-              <Milk className="w-3.5 h-3.5 text-blue-600" /> Bovinos de leche (DHLI)
+              <Milk className="w-3.5 h-3.5 text-emerald-600" /> Bovinos de leche (DHLI)
             </button>
             <button
               onClick={() => { setLivestockMode('beef'); setUnitPrice(8500); }}
-              className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${livestockMode === 'beef' ? 'bg-white text-rose-700 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
+              className={`px-4 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition ${livestockMode === 'beef' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
             >
-              <Beef className="w-3.5 h-3.5 text-rose-600" /> Bovinos de carne (HLI)
+              <Beef className="w-3.5 h-3.5 text-amber-600" /> Bovinos de carne (HLI)
             </button>
           </div>
 
@@ -486,10 +485,10 @@ export default function HomePage() {
       <div className="max-w-7xl mx-auto p-4 md:p-8 space-y-6">
 
         {/* HERO SUPERIOR: CARRUSEL CON ANIMAL 3D FLOTANTE */}
-        <div className={`relative rounded-3xl border p-6 md:p-8 shadow-sm transition-all overflow-hidden ${livestockMode === 'dairy' ? 'bg-gradient-to-r from-blue-50/70 via-slate-50 to-white border-blue-100' : 'bg-gradient-to-r from-rose-50/70 via-slate-50 to-white border-rose-100'}`}>
+        <div className={`relative rounded-3xl border p-6 md:p-8 shadow-sm transition-all overflow-hidden ${livestockMode === 'dairy' ? 'bg-gradient-to-r from-emerald-50/70 via-slate-50 to-white border-emerald-100' : 'bg-gradient-to-r from-amber-50/70 via-slate-50 to-white border-amber-100'}`}>
           <div className="flex justify-between items-center mb-3">
             <div className="flex items-center gap-2">
-              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${livestockMode === 'dairy' ? 'bg-blue-600 text-white' : 'bg-rose-600 text-white'}`}>
+              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${livestockMode === 'dairy' ? 'bg-emerald-600 text-white' : 'bg-amber-600 text-white'}`}>
                 {newsList[activeNewsIdx]?.category || 'Novedad'}
               </span>
               <span className="text-[11px] text-slate-400">{newsList[activeNewsIdx]?.date}</span>
@@ -517,7 +516,7 @@ export default function HomePage() {
                   <button
                     key={i}
                     onClick={() => setActiveNewsIdx(i)}
-                    className={`h-1.5 rounded-full transition-all ${activeNewsIdx === i ? (livestockMode === 'dairy' ? 'w-6 bg-blue-600' : 'w-6 bg-rose-600') : 'w-1.5 bg-slate-300'}`}
+                    className={`h-1.5 rounded-full transition-all ${activeNewsIdx === i ? (livestockMode === 'dairy' ? 'w-6 bg-emerald-600' : 'w-6 bg-amber-600') : 'w-1.5 bg-slate-300'}`}
                   />
                 ))}
               </div>
@@ -557,7 +556,7 @@ export default function HomePage() {
                   placeholder="Buscar municipio o departamento (ej. Sopó, Montería, Rafaela)..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-500 focus:bg-white"
+                  className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 focus:outline-none focus:border-emerald-500 focus:bg-white"
                 />
                 <Search className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
                 {isSearching && (
@@ -581,7 +580,6 @@ export default function HomePage() {
               )}
             </div>
 
-            {/* Calculadora ROI en la barra */}
             <button
               onClick={() => setShowFinanceModal(true)}
               className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 border border-slate-200 transition"
@@ -708,7 +706,7 @@ export default function HomePage() {
 
         </div>
 
-        {/* MAPA PRINCIPAL */}
+        {/* MAPA PRINCIPAL (SATÉLITE HD / GLOBO 3D) */}
         <div className="relative rounded-3xl overflow-hidden border border-slate-200 shadow-sm bg-slate-900">
           {mapMode === 'globe' ? (
             <EarthGlobe
@@ -786,39 +784,37 @@ export default function HomePage() {
 
             <div className="pt-2 border-t border-slate-100 flex items-center gap-2 text-xs text-slate-600">
               <Moon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-              <span>Enfriamiento nocturno: <strong className={nightCoolingHours >= 6 ? 'text-blue-700' : 'text-amber-700'}>{nightCoolingHours}h</strong></span>
+              <span>Enfriamiento nocturno: <strong className={nightCoolingHours >= 6 ? 'text-emerald-700' : 'text-amber-700'}>{nightCoolingHours}h</strong></span>
             </div>
           </div>
 
         </div>
 
-        {/* MÓDULO PREDICTIVO MULTIESCALA EN LÍNEAS CON SELECTORES LIBRES Y ROTULADO COMPLETO */}
+        {/* MÓDULO PREDICTIVO: LÍNEA CONTINUA SIN PUNTOS, CURVA SUAVE Y ÁREA SOMBREADA */}
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
           
-          {/* Barra de Migas de Pan + Filtros de Selección Libre */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
             <div>
               <h3 className="font-bold text-sm text-slate-900">Módulo predictivo y análisis multiescala</h3>
               <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
-                <button onClick={() => setDrillLevel('year')} className={drillLevel === 'year' ? 'font-bold text-blue-600 underline' : 'hover:text-slate-800'}>
+                <button onClick={() => setDrillLevel('year')} className={drillLevel === 'year' ? 'font-bold text-emerald-600 underline' : 'hover:text-slate-800'}>
                   Años
                 </button>
                 <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
-                <button onClick={() => setDrillLevel('month')} className={drillLevel === 'month' ? 'font-bold text-blue-600 underline' : 'hover:text-slate-800'}>
+                <button onClick={() => setDrillLevel('month')} className={drillLevel === 'month' ? 'font-bold text-emerald-600 underline' : 'hover:text-slate-800'}>
                   Meses ({selectedYear})
                 </button>
                 <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
-                <button onClick={() => setDrillLevel('day')} className={drillLevel === 'day' ? 'font-bold text-blue-600 underline' : 'hover:text-slate-800'}>
+                <button onClick={() => setDrillLevel('day')} className={drillLevel === 'day' ? 'font-bold text-emerald-600 underline' : 'hover:text-slate-800'}>
                   Días ({mesesNombres[selectedMonth]})
                 </button>
                 <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
-                <button onClick={() => setDrillLevel('hour')} className={drillLevel === 'hour' ? 'font-bold text-blue-600 underline' : 'hover:text-slate-800'}>
+                <button onClick={() => setDrillLevel('hour')} className={drillLevel === 'hour' ? 'font-bold text-emerald-600 underline' : 'hover:text-slate-800'}>
                   Horas (Día {selectedDay})
                 </button>
               </div>
             </div>
 
-            {/* Selectores Directos para Consultar Cualquier Fecha */}
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <select
                 value={selectedYear}
@@ -865,23 +861,28 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Subtítulo dinámico con instrucciones de clic */}
           <div className="flex justify-between items-center text-xs text-slate-500">
             <span>
-              {drillLevel === 'year' && 'Línea de tendencia histórica y futura (haz clic en un punto para ver sus meses):'}
-              {drillLevel === 'month' && `Variación mensual de ${selectedYear} (haz clic en un mes para ver sus días):`}
-              {drillLevel === 'day' && `Días de ${mesesNombres[selectedMonth]} de ${selectedYear} (haz clic en un día para ver sus 24 horas):`}
-              {drillLevel === 'hour' && `Curva horaria del día ${selectedDay} de ${mesesNombres[selectedMonth]} (00:00 a 23:00):`}
+              {drillLevel === 'year' && 'Tendencia multianual continua (haz clic en un punto para ver sus meses):'}
+              {drillLevel === 'month' && `Variación mensual de ${selectedYear} (haz clic para ver sus días):`}
+              {drillLevel === 'day' && `Días de ${mesesNombres[selectedMonth]} de ${selectedYear} (haz clic para ver sus 24 horas):`}
+              {drillLevel === 'hour' && `Curva horaria continua del día ${selectedDay} de ${mesesNombres[selectedMonth]} (00:00 a 23:00):`}
             </span>
             <span className="text-red-500 font-semibold">
               --- Umbral crítico ({thresholdLineValue} {livestockMode === 'dairy' ? 'DHLI' : 'HLI'})
             </span>
           </div>
 
-          {/* GRÁFICA DE LÍNEAS CONTINUAS CON EJES TOTALMENTE ETIQUETADOS */}
+          {/* GRÁFICA DE LÍNEA SIN PUNTOS, SUAVE Y ELEGANTE */}
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={getChartData()} onClick={handleChartPointClick} className="cursor-pointer">
+                <defs>
+                  <linearGradient id="lineAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor={lineColor} stopOpacity={0.25} />
+                    <stop offset="95%" stopColor={lineColor} stopOpacity={0.0} />
+                  </linearGradient>
+                </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
                 <XAxis 
                   dataKey="label" 
@@ -889,7 +890,7 @@ export default function HomePage() {
                   fontSize={11}
                   interval={0}
                   label={{ 
-                    value: drillLevel === 'hour' ? 'Hora del día' : drillLevel === 'day' ? 'Días del mes' : drillLevel === 'month' ? 'Meses del año' : 'Año', 
+                    value: drillLevel === 'hour' ? 'Hora del día (00:00 a 23:00)' : drillLevel === 'day' ? 'Días del mes' : drillLevel === 'month' ? 'Meses del año' : 'Año', 
                     position: 'insideBottom', 
                     offset: -5,
                     fill: '#64748B',
@@ -917,101 +918,44 @@ export default function HomePage() {
                 <Line
                   type="monotone"
                   dataKey="val"
-                  stroke={themeColor}
-                  strokeWidth={3}
-                  activeDot={{ r: 7, stroke: '#FFFFFF', strokeWidth: 2 }}
-                  dot={{ r: 3, fill: themeColor }}
+                  stroke={lineColor}
+                  strokeWidth={2.8}
+                  dot={false}
+                  activeDot={{ r: 6, stroke: '#FFFFFF', strokeWidth: 2, fill: lineColor }}
                 />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* MAPA DE CALOR GLOBAL CIENTÍFICO SINCRONIZADO CON EL TIEMPO */}
+        {/* MAPA DE CALOR GLOBAL CIENTÍFICO CON LEAFLET REAL */}
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
             <div>
-              <h3 className="font-bold text-sm text-slate-900">Distribución global de estrés térmico (Mapa térmico raster)</h3>
+              <h3 className="font-bold text-sm text-slate-900">Distribución global de estrés térmico (Cartografía científica)</h3>
               <p className="text-xs text-slate-500">
-                Sincronizado con: {selectedDay} de {mesesNombres[selectedMonth]} de {selectedYear} ({selectedHour}:00 UTC)
+                Modelo estacional sincronizado con el análisis multiescala | Cartografía interactiva de alta resolución
               </p>
             </div>
-            <div className="text-xs font-semibold px-3 py-1 bg-slate-100 text-slate-700 rounded-xl">
-              Proyección global con estacionalidad bioclimática
-            </div>
           </div>
 
-          {/* Lienzo del Mapa con Continentes Reales y Gradiente Térmico */}
-          <div className="relative h-64 md:h-80 w-full rounded-2xl overflow-hidden border border-slate-200 bg-[#0B192C]">
-            
-            {/* Gradiente térmico estacional dinámico */}
-            <div
-              className="absolute inset-0 opacity-80 transition-all duration-700"
-              style={{
-                background: `linear-gradient(to bottom, 
-                  #1E3A8A 0%, 
-                  #3B82F6 ${Math.max(10, 20 + solarLatitudeShift * 0.3)}%, 
-                  #FEF3C7 ${Math.max(25, 40 + solarLatitudeShift * 0.4)}%, 
-                  #B45309 ${50 + solarLatitudeShift * 0.4}%, 
-                  #7F1D1D ${52 + solarLatitudeShift * 0.4}%, 
-                  #B45309 ${Math.min(75, 60 + solarLatitudeShift * 0.4)}%, 
-                  #FEF3C7 ${Math.min(85, 75 + solarLatitudeShift * 0.3)}%, 
-                  #3B82F6 92%, 
-                  #1E3A8A 100%)`
-              }}
-            />
-
-            {/* CONTINENTES REALES DE LA TIERRA (GEOMETRÍA CARTOGRÁFICA) */}
-            <svg viewBox="0 0 1000 500" className="absolute inset-0 w-full h-full pointer-events-none opacity-60 mix-blend-multiply stroke-slate-900 stroke-[1.2] fill-slate-700">
-              {/* América del Norte */}
-              <path d="M 120,60 L 160,50 L 220,55 L 260,80 L 280,120 L 250,150 L 240,190 L 210,210 L 180,240 L 170,220 L 150,200 L 130,160 L 90,130 L 100,80 Z" />
-              {/* América Central y Sur */}
-              <path d="M 210,210 L 240,240 L 270,260 L 320,300 L 330,350 L 310,400 L 280,450 L 260,460 L 250,420 L 250,350 L 220,300 L 200,250 Z" />
-              {/* Europa */}
-              <path d="M 450,80 L 520,70 L 560,90 L 580,130 L 550,160 L 510,170 L 480,190 L 460,170 L 450,130 L 430,110 Z" />
-              {/* África */}
-              <path d="M 460,190 L 540,180 L 590,230 L 610,290 L 580,360 L 540,410 L 500,420 L 470,360 L 450,280 L 440,220 Z" />
-              {/* Asia */}
-              <path d="M 580,80 L 680,60 L 780,70 L 880,100 L 870,160 L 820,200 L 780,260 L 740,280 L 700,230 L 680,180 L 620,170 L 580,130 Z" />
-              {/* Oceanía / Australia */}
-              <path d="M 780,320 L 860,310 L 900,350 L 880,410 L 820,420 L 770,380 Z" />
-              {/* Groenlandia */}
-              <path d="M 290,40 L 340,30 L 360,60 L 330,90 L 300,70 Z" />
-            </svg>
-
-            {/* Marcador del predio consultado */}
-            {selectedCoords && (
-              <div
-                className="absolute w-5 h-5 -ml-2.5 -mt-2.5 rounded-full bg-white border-2 border-slate-900 shadow-xl flex items-center justify-center animate-bounce"
-                style={{
-                  left: `${((lon + 180) / 360) * 100}%`,
-                  top: `${((90 - lat) / 180) * 100}%`
-                }}
-              >
-                <div className="w-2 h-2 rounded-full bg-red-600" />
-              </div>
-            )}
-          </div>
-
-          {/* Barra de escala científica idéntica al estudio */}
-          <div className="space-y-1.5 pt-2">
-            <div className="h-4 w-full rounded-md shadow-inner" style={{
-              background: 'linear-gradient(to right, #1E3A8A, #3B82F6, #93C5FD, #FDE68A, #F59E0B, #DC2626, #7F1D1D)'
-            }} />
-            <div className="flex justify-between text-[10px] text-slate-500 font-mono">
-              <span>-69.3 (Frío extremo)</span>
-              <span>-34.7</span>
-              <span>0.0 (Termoneutral)</span>
-              <span>34.7</span>
-              <span>52.0</span>
-              <span className="font-bold text-slate-900">69.3 (Estrés crítico)</span>
-            </div>
-          </div>
+          <GlobalHeatMap
+            lat={lat}
+            lon={lon}
+            placeName={placeName}
+            selectedYear={selectedYear}
+            selectedMonth={selectedMonth}
+            selectedDay={selectedDay}
+            selectedHour={selectedHour}
+            indexVal={result.indexVal}
+            livestockMode={livestockMode}
+            onLocationChange={(newLat, newLon) => handleLocationUpdate(newLat, newLon)}
+          />
         </div>
 
       </div>
 
-      {/* BOTÓN FLOTANTE DE WHATSAPP (SOBRE EL ASISTENTE DE IA) */}
+      {/* BOTÓN FLOTANTE DE WHATSAPP */}
       <button
         onClick={handleSendWhatsAppAlert}
         className="fixed bottom-24 right-6 z-40 w-12 h-12 bg-slate-900 hover:bg-slate-800 text-white rounded-full shadow-lg border border-slate-700 flex items-center justify-center transition-transform hover:scale-110"
@@ -1223,7 +1167,7 @@ export default function HomePage() {
               </div>
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
                 <span className="text-[10px] text-slate-400 block">Retorno (ROI)</span>
-                <span className="text-base font-bold text-blue-600">{roiMonths} meses</span>
+                <span className="text-base font-bold text-emerald-600">{roiMonths} meses</span>
               </div>
             </div>
           </div>
