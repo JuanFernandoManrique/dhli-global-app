@@ -1,8 +1,8 @@
 'use client';
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { Play, Pause, Calendar, Clock, MapPin, Globe, Sparkles, RefreshCw } from 'lucide-react';
+import { Play, Pause, Calendar, Clock, MapPin, Globe } from 'lucide-react';
 
 interface DepartmentHeatMapProps {
   lat: number;
@@ -12,8 +12,8 @@ interface DepartmentHeatMapProps {
   t: (key: string) => string;
 }
 
-// Capa Canvas de Alta Resolución que pinta el estrés térmico en TODO EL PLANETA
-function GlobalThermalCanvasLayer({
+// Capa de Calor Continua y Suave (Sin pixelado tosco, idéntica a modelos meteorológicos)
+function GlobalThermalSmoothLayer({
   year,
   month,
   hour,
@@ -28,20 +28,20 @@ function GlobalThermalCanvasLayer({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
-    const canvas = L.DomUtil.create('canvas', 'leaflet-thermal-canvas') as HTMLCanvasElement;
+    const canvas = L.DomUtil.create('canvas', 'leaflet-smooth-thermal-canvas') as HTMLCanvasElement;
     canvas.style.position = 'absolute';
     canvas.style.top = '0';
     canvas.style.left = '0';
     canvas.style.pointerEvents = 'none';
     canvas.style.zIndex = '200';
-    canvas.style.opacity = '0.58';
-    canvas.style.mixBlendMode = 'multiply';
+    canvas.style.opacity = '0.70';
+    canvas.style.mixBlendMode = 'screen';
 
     const pane = map.getPane('overlayPane');
     if (pane) pane.appendChild(canvas);
     canvasRef.current = canvas;
 
-    const renderThermalGrid = () => {
+    const renderThermalField = () => {
       if (!canvasRef.current) return;
       const size = map.getSize();
       canvas.width = size.x;
@@ -51,56 +51,65 @@ function GlobalThermalCanvasLayer({
       if (!ctx) return;
       ctx.clearRect(0, 0, size.x, size.y);
 
-      // Desplazamiento solar estacional (-23.4° a +23.4° de latitud)
+      // Declinación solar estacional: oscila entre -23.4° (Diciembre) y +23.4° (Junio)
       const solarDeclination = -23.44 * Math.cos(((month + 0.5) / 12) * 2 * Math.PI);
-      // Longitud donde es mediodía solar según la hora UTC
+      // Longitud solar donde es mediodía en UTC
       const solarNoonLon = (12 - hour) * 15;
-      // Factor de calentamiento por año (proyección a 2100)
-      const warmingOffset = (year - 2024) * 0.08;
 
-      const step = 8; // Resolución de malla en píxeles
-      for (let x = 0; x < size.x; x += step) {
-        for (let y = 0; y < size.y; y += step) {
-          const latLng = map.containerPointToLatLng([x, y]);
-          const currentLat = latLng.lat;
-          const currentLon = latLng.lng;
+      // 1. Capa Base Latitudinal Planetaria (Polo Frío <-> Trópico Cálido)
+      const northPolePoint = map.latLngToContainerPoint([85, 0]);
+      const equatorPoint = map.latLngToContainerPoint([solarDeclination, 0]);
+      const southPolePoint = map.latLngToContainerPoint([-85, 0]);
 
-          if (currentLat < -85 || currentLat > 85) continue;
+      // Gradiente hemisferio Norte
+      const northGrad = ctx.createLinearGradient(0, northPolePoint.y, 0, equatorPoint.y);
+      northGrad.addColorStop(0, '#1E3A8A'); // Azul polar frío (-69)
+      northGrad.addColorStop(0.35, '#3B82F6');
+      northGrad.addColorStop(0.65, '#22C55E'); // Confort
+      northGrad.addColorStop(0.85, '#EAB308'); // Alerta
+      northGrad.addColorStop(1, '#DC2626');   // Trópico cálido
 
-          // Modelo termodinámico: temperatura según latitud efectiva y radiación solar
-          const effectiveLat = currentLat - solarDeclination;
-          const latFactor = Math.cos((effectiveLat * Math.PI) / 180);
+      ctx.fillStyle = northGrad;
+      ctx.fillRect(0, Math.min(northPolePoint.y, equatorPoint.y), size.x, Math.abs(equatorPoint.y - northPolePoint.y));
 
-          // Ciclo día/noche según la posición del sol
-          let lonDiff = Math.abs(currentLon - solarNoonLon);
-          if (lonDiff > 180) lonDiff = 360 - lonDiff;
-          const diurnalFactor = Math.max(0, Math.cos((lonDiff * Math.PI) / 180));
+      // Gradiente hemisferio Sur
+      const southGrad = ctx.createLinearGradient(0, equatorPoint.y, 0, southPolePoint.y);
+      southGrad.addColorStop(0, '#DC2626');
+      southGrad.addColorStop(0.25, '#EAB308');
+      southGrad.addColorStop(0.55, '#22C55E');
+      southGrad.addColorStop(0.80, '#3B82F6');
+      southGrad.addColorStop(1, '#1E3A8A');
 
-          // Cálculo del índice térmico equivalente (-69.3 a 69.3)
-          let indexVal = (latFactor * 48 - 18) + (diurnalFactor * 22) + warmingOffset;
-          if (currentLat > 65 || currentLat < -60) indexVal -= 30; // Polos fríos
+      ctx.fillStyle = southGrad;
+      ctx.fillRect(0, Math.min(equatorPoint.y, southPolePoint.y), size.x, Math.abs(southPolePoint.y - equatorPoint.y));
 
-          // Asignación de color según la escala científica del artículo
-          let color = '#3B82F6'; // Azul frío
-          if (indexVal < -10) color = '#1E3A8A';
-          else if (indexVal < 10) color = '#60A5FA';
-          else if (indexVal < 25) color = '#22C55E'; // Verde confort
-          else if (indexVal < 35) color = '#FEF3C7'; // Neutro / amarillo
-          else if (indexVal < 48) color = '#F59E0B'; // Ámbar / naranja
-          else if (indexVal < 58) color = '#DC2626'; // Rojo estrés
-          else color = '#7F1D1D'; // Carmesí crítico
+      // 2. Onda Solar Diurna del Mediodía (Recorre el mundo de este a oeste)
+      const noonPoint = map.latLngToContainerPoint([solarDeclination, solarNoonLon]);
+      const sunRadius = Math.max(size.x * 0.45, 300);
 
-          ctx.fillStyle = color;
-          ctx.fillRect(x, y, step, step);
-        }
+      const diurnalGrad = ctx.createRadialGradient(noonPoint.x, noonPoint.y, 20, noonPoint.x, noonPoint.y, sunRadius);
+      diurnalGrad.addColorStop(0, 'rgba(185, 28, 28, 0.75)'); // Núcleo térmico solar máximo
+      diurnalGrad.addColorStop(0.35, 'rgba(234, 179, 8, 0.45)');
+      diurnalGrad.addColorStop(0.70, 'rgba(34, 197, 94, 0.15)');
+      diurnalGrad.addColorStop(1, 'rgba(30, 58, 138, 0)');
+
+      ctx.fillStyle = diurnalGrad;
+      ctx.beginPath();
+      ctx.arc(noonPoint.x, noonPoint.y, sunRadius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Efecto adicional de calentamiento global multianual
+      if (year > 2030) {
+        ctx.fillStyle = `rgba(220, 38, 38, ${Math.min(0.25, (year - 2030) * 0.003)})`;
+        ctx.fillRect(0, 0, size.x, size.y);
       }
     };
 
-    renderThermalGrid();
+    renderThermalField();
 
-    map.on('moveend zoomend resize', renderThermalGrid);
+    map.on('moveend zoomend resize', renderThermalField);
     return () => {
-      map.off('moveend zoomend resize', renderThermalGrid);
+      map.off('moveend zoomend resize', renderThermalField);
       if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
     };
   }, [map, year, month, hour, livestockMode]);
@@ -117,37 +126,37 @@ export default function DepartmentHeatMap({
 }: DepartmentHeatMapProps) {
   const [mounted, setMounted] = useState(false);
 
-  // FILTRO TEMPORAL INDEPENDIENTE PARA ESTE MAPA
+  // FILTRO TEMPORAL INDEPENDIENTE
   const [mapTimeScale, setMapTimeScale] = useState<'hour' | 'day' | 'month' | 'year'>('month');
   const [mapYear, setMapYear] = useState<number>(2024);
   const [mapMonth, setMapMonth] = useState<number>(new Date().getMonth());
   const [mapDay, setMapDay] = useState<number>(new Date().getDate());
   const [mapHour, setMapHour] = useState<number>(14);
 
-  // ESTADO DEL REPRODUCTOR DE VIDEO
+  // REPRODUCTOR DE VIDEO SIMULADO
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Pin personalizado para el predio
+  // Pin indicador para el predio del usuario
   const [markerIcon, setMarkerIcon] = useState<any>(null);
 
   useEffect(() => {
     setMounted(true);
     const icon = L.divIcon({
-      className: 'custom-global-pin',
+      className: 'custom-smooth-global-pin',
       html: `
-        <div style="position: relative; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">
-          <div style="position: absolute; inset: 0; border-radius: 50%; background: ${livestockMode === 'dairy' ? 'rgba(74, 222, 128, 0.4)' : 'rgba(239, 68, 68, 0.4)'}; animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-          <div style="position: absolute; width: 14px; height: 14px; border-radius: 50%; background: ${livestockMode === 'dairy' ? '#4ADE80' : '#EF4444'}; border: 2.5px solid #FFFFFF; box-shadow: 0 0 10px rgba(0,0,0,0.8);"></div>
+        <div style="position: relative; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;">
+          <div style="position: absolute; inset: 0; border-radius: 50%; background: ${livestockMode === 'dairy' ? 'rgba(74, 222, 128, 0.45)' : 'rgba(239, 68, 68, 0.45)'}; animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+          <div style="position: absolute; width: 14px; height: 14px; border-radius: 50%; background: ${livestockMode === 'dairy' ? '#4ADE80' : '#EF4444'}; border: 2.5px solid #FFFFFF; box-shadow: 0 0 12px rgba(0,0,0,0.9);"></div>
         </div>
       `,
-      iconSize: [32, 32],
-      iconAnchor: [16, 16],
+      iconSize: [34, 34],
+      iconAnchor: [17, 17],
     });
     setMarkerIcon(icon);
   }, [livestockMode]);
 
-  // Bucle de reproducción animada (Video Timelapse Global)
+  // Animación del reproductor (Timelapse)
   useEffect(() => {
     if (isPlaying) {
       timerRef.current = setInterval(() => {
@@ -160,7 +169,7 @@ export default function DepartmentHeatMap({
         } else if (mapTimeScale === 'year') {
           setMapYear((prev) => (prev >= 2060 ? 2020 : prev + 2));
         }
-      }, 650);
+      }, 600);
     } else if (timerRef.current) {
       clearInterval(timerRef.current);
     }
@@ -179,7 +188,7 @@ export default function DepartmentHeatMap({
   return (
     <div className="bg-[#0A110D] rounded-3xl border border-emerald-500/20 p-5 space-y-4 shadow-2xl">
       
-      {/* Barra de Controles y Reproductor */}
+      {/* Barra superior de controles del mapa */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-3">
         <div className="space-y-0.5">
           <h3 className="text-sm font-bold text-white flex items-center gap-2">
@@ -191,7 +200,7 @@ export default function DepartmentHeatMap({
           </p>
         </div>
 
-        {/* Botones de Reproducción y Selección Temporal */}
+        {/* Reproductor y Controles Temporales */}
         <div className="flex flex-wrap items-center gap-2">
           
           <button
@@ -206,7 +215,6 @@ export default function DepartmentHeatMap({
             {isPlaying ? t('pause') : t('play_sim')}
           </button>
 
-          {/* Selector de qué temporalidad animar */}
           <div className="flex bg-black/60 p-1 rounded-xl border border-white/10 text-[11px]">
             {(['hour', 'day', 'month', 'year'] as const).map((scale) => (
               <button
@@ -221,7 +229,6 @@ export default function DepartmentHeatMap({
             ))}
           </div>
 
-          {/* Selectores independientes */}
           <select
             value={mapYear}
             onChange={(e) => setMapYear(Number(e.target.value))}
@@ -254,7 +261,7 @@ export default function DepartmentHeatMap({
         </div>
       </div>
 
-      {/* Visor Leaflet con la Malla Térmica Planetaria Dinámica */}
+      {/* Contenedor Leaflet con ESRI (Sin marcas de agua y libre) */}
       <div className="relative h-96 w-full rounded-2xl overflow-hidden border border-emerald-500/20 bg-[#050B08]">
         <MapContainer
           center={[15, 0]}
@@ -265,14 +272,20 @@ export default function DepartmentHeatMap({
           scrollWheelZoom={true}
           className="w-full h-full z-10"
         >
-          {/* Base cartográfica oscura con fronteras continentales reales */}
+          {/* Capa Cartográfica Oficial Esri Dark Gray (SIN API KEY Y SIN MARCAS DE AGUA) */}
           <TileLayer
-            attribution='&copy; OpenStreetMap | NOAA &amp; NASA Reanalysis'
-            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            attribution='&copy; <a href="https://www.esri.com/">Esri</a> &mdash; World Dark Gray Base'
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
           />
 
-          {/* CAPA DE CALOR GLOBAL QUE COLOREA TODO EL PLANETA TIERRA */}
-          <GlobalThermalCanvasLayer
+          {/* Fronteras y etiquetas de países sobre el mapa */}
+          <TileLayer
+            attribution=''
+            url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
+          />
+
+          {/* CAPA TÉRMICA CONTINUA Y SUAVE SOBRE TODOS LOS CONTINENTES */}
+          <GlobalThermalSmoothLayer
             year={mapYear}
             month={mapMonth}
             hour={mapHour}
@@ -290,7 +303,7 @@ export default function DepartmentHeatMap({
                   </div>
                   <div>Coordenadas: {lat.toFixed(2)}°, {lon.toFixed(2)}°</div>
                   <div className="text-[11px] text-slate-600">
-                    Sincronizado con simulación: {mapDay} de {mesesCompletos[mapMonth]} {mapYear} ({mapHour}:00 UTC)
+                    Simulación: {mapDay} de {mesesCompletos[mapMonth]} {mapYear} ({mapHour}:00 UTC)
                   </div>
                 </div>
               </Popup>
@@ -298,7 +311,7 @@ export default function DepartmentHeatMap({
           )}
         </MapContainer>
 
-        {/* Indicador de animación activa */}
+        {/* Indicador de simulación activa */}
         {isPlaying && (
           <div className="absolute top-3 right-3 z-[400] bg-black/85 backdrop-blur-md px-3 py-1 rounded-full border border-emerald-500/40 text-[10px] font-bold text-emerald-400 flex items-center gap-1.5 shadow-xl animate-pulse">
             <span className="w-2 h-2 rounded-full bg-emerald-400" />
@@ -311,7 +324,7 @@ export default function DepartmentHeatMap({
       <div className="space-y-1.5 pt-1">
         <div className="flex justify-between items-center text-[10px] font-bold text-slate-300">
           <span>Escala de estrés térmico global</span>
-          <span className="text-emerald-400 font-mono">Modelo bioclimático planetario (ERA5 / THI)</span>
+          <span className="text-emerald-400 font-mono">Modelo bioclimático planetario continuo</span>
         </div>
         <div
           className="h-2.5 w-full rounded-full shadow-inner"
