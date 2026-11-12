@@ -8,10 +8,10 @@ import AiChatbot from '../components/AiChatbot';
 import { 
   Search, MapPin, Sliders, Thermometer, Wind, Droplets, Sun, Calendar, Clock, 
   TrendingUp, Globe2, Map as MapIcon, ChevronRight, RotateCcw, Navigation, 
-  Languages, Trees, Download, Printer, Moon, DollarSign, MessageCircle, Settings, 
+  Trees, Download, Printer, Moon, DollarSign, MessageCircle, Settings, 
   Beef, Milk, BookOpen, ExternalLink, PlusCircle, Trash2, Lock, ArrowLeft, ArrowRight, X
 } from 'lucide-react';
-import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar, ReferenceLine } from 'recharts';
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ReferenceLine, Area } from 'recharts';
 
 const EarthGlobe = dynamic(() => import('../components/EarthGlobe'), { ssr: false });
 const FarmMap = dynamic(() => import('../components/FarmMap'), { ssr: false });
@@ -20,7 +20,7 @@ export default function HomePage() {
   const [lang, setLang] = useState<'es' | 'en' | 'pt'>('es');
   const [livestockMode, setLivestockMode] = useState<LivestockMode>('dairy');
 
-  // Modal de bienvenida
+  // Modal de bienvenida inicial
   const [showWelcomeSplash, setShowWelcomeSplash] = useState(false);
 
   // Ubicación y Coordenadas
@@ -52,10 +52,10 @@ export default function HomePage() {
   // Vistas
   const [showCoordsPanel, setShowCoordsPanel] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [mapMode, setMapMode] = useState<'globe' | 'satellite'>('globe');
+  const [mapMode, setMapMode] = useState<'globe' | 'satellite'>('satellite');
 
-  // MÓDULO PREDICTIVO MULTIESCALA (Años -> Meses -> Días -> Horas)
-  const [drillLevel, setDrillLevel] = useState<'year' | 'month' | 'day' | 'hour'>('year');
+  // MÓDULO PREDICTIVO MULTIESCALA (INICIA POR DEFECTO EN 24 HORAS)
+  const [drillLevel, setDrillLevel] = useState<'hour' | 'day' | 'month' | 'year'>('hour');
   const [selectedYear, setSelectedYear] = useState<number>(2024);
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
   const [selectedDay, setSelectedDay] = useState<number>(new Date().getDate());
@@ -116,7 +116,7 @@ export default function HomePage() {
     return () => clearInterval(interval);
   }, [newsList.length]);
 
-  // Buscador con autocompletado en tiempo real
+  // Buscador predictivo en tiempo real
   useEffect(() => {
     if (!searchQuery || searchQuery.trim().length < 3) {
       setSearchResults([]);
@@ -161,6 +161,7 @@ export default function HomePage() {
     const name = item.display_name.split(',').slice(0, 3).join(', ');
     setSearchQuery('');
     setSearchResults([]);
+    setDrillLevel('hour'); // Abre por defecto en vista de 24 horas
     handleLocationUpdate(newLat, newLon, name);
   };
 
@@ -214,6 +215,7 @@ export default function HomePage() {
     const pLat = parseFloat(manualLat);
     const pLon = parseFloat(manualLon);
     if (!isNaN(pLat) && !isNaN(pLon)) {
+      setDrillLevel('hour');
       handleLocationUpdate(pLat, pLon);
       setShowCoordsPanel(false);
     }
@@ -222,6 +224,7 @@ export default function HomePage() {
   const handleGPS = () => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition((pos) => {
+        setDrillLevel('hour');
         handleLocationUpdate(pos.coords.latitude, pos.coords.longitude);
       });
     }
@@ -231,27 +234,27 @@ export default function HomePage() {
     const dateStr = `${selectedDay}/${selectedMonth + 1}/${selectedYear} - ${selectedHour}:00`;
     const indexName = livestockMode === 'dairy' ? 'DHLI' : 'HLI';
     const impactText = livestockMode === 'dairy'
-      ? `Pérdida calculada: -${(result as any).milkLoss} L/vaca/día (${dailyPhysicalLost.toFixed(0)} L/día en hato)`
+      ? `Pérdida esperada: -${(result as any).milkLoss} L/vaca/día (${dailyPhysicalLost.toFixed(0)} L/día en el lote)`
       : `Caída en ganancia: -${(result as any).adgLoss} kg/día/novillo`;
 
     const msg = `🚨 Alerta de estrés térmico bovino (${indexName})\n` +
       `📍 Predio: ${placeName}\n` +
       `🐄 Sistema: ${livestockMode === 'dairy' ? `Leche (${dairyBreed})` : `Carne (${beefBreed})`}\n` +
-      `📅 Fecha/Hora: ${dateStr}\n` +
-      `🌡️ Índice: ${result.indexVal} (${result.category})\n` +
+      `📅 Fecha: ${dateStr}\n` +
+      `🌡️ Índice actual: ${result.indexVal} (${result.category})\n` +
       `💨 Clima: ${temp}°C | HR: ${rh}% | BGT: ${result.bgt}°C\n` +
-      `📉 Impacto: ${impactText}\n` +
-      `💰 Pérdida estimada: $${dailyMoneyLost.toLocaleString()} ${currencySymbol}/día\n` +
-      `🌱 Sombra: ${hasShade ? 'Mitigada (80%)' : 'A pleno sol'}\n\n` +
-      `Monitoreo satelital: https://dhli-global-app.vercel.app`;
+      `📉 Impacto productivo: ${impactText}\n` +
+      `💰 Pérdida económica: $${dailyMoneyLost.toLocaleString()} ${currencySymbol}/día\n` +
+      `🌱 Condición: ${hasShade ? 'Sombra mitigada (80%)' : 'A pleno sol'}\n\n` +
+      `Plataforma oficial: https://dhli-global-app.vercel.app`;
 
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`);
   };
 
   const handleExportCSV = () => {
     const indexName = livestockMode === 'dairy' ? 'DHLI' : 'HLI';
-    let csvContent = `data:text/csv;charset=utf-8,Periodo,Indice_${indexName},Temperatura_C\n`;
-    getChartDataForCurrentLevel().forEach((row) => {
+    let csvContent = `data:text/csv;charset=utf-8,Periodo,${indexName}_Indice,Temperatura_C\n`;
+    getChartData().forEach((row) => {
       csvContent += `${row.label},${row.val},${row.temp}\n`;
     });
     const link = document.createElement('a');
@@ -262,7 +265,7 @@ export default function HomePage() {
     document.body.removeChild(link);
   };
 
-  // PIN de administrador
+  // Autenticación de Administrador (PIN por defecto: 1234)
   const handleVerifyPin = (e: React.FormEvent) => {
     e.preventDefault();
     if (adminPin === '1234' || adminPin === 'admin2026') {
@@ -318,57 +321,66 @@ export default function HomePage() {
     } catch {}
   };
 
-  // GENERADORES DE DATOS DINÁMICOS MULTIESCALA (Años -> Meses -> Días -> Horas)
-  const getYearsData = () => {
-    const years = [1990, 2000, 2010, 2020, 2024, 2026, 2030, 2040, 2050, 2060, 2080, 2100];
-    return years.map((y, idx) => ({
+  // DATOS DINÁMICOS SEGÚN NIVEL
+  const getYearsList = () => {
+    const startYear = 1980;
+    const endYear = 2100;
+    const step = 5;
+    const yrs: number[] = [];
+    for (let y = startYear; y <= endYear; y += step) yrs.push(y);
+    if (!yrs.includes(selectedYear)) yrs.push(selectedYear);
+    yrs.sort((a, b) => a - b);
+    return yrs.map((y) => ({
       label: y.toString(),
-      raw: y,
-      val: Math.round(result.indexVal - 6 + idx * 1.3),
-      temp: +(temp - 1.5 + idx * 0.35).toFixed(1)
+      val: Math.round(result.indexVal - 5 + ((y - 2024) * 0.12)),
+      temp: +(temp + ((y - 2024) * 0.025)).toFixed(1),
+      raw: y
     }));
   };
 
-  const getMonthsData = () => {
+  const getMonthsList = () => {
     const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
     return meses.map((m, idx) => ({
       label: m,
-      raw: idx,
-      val: Math.round(result.indexVal + Math.sin(idx / 1.8) * 6),
-      temp: +(temp + Math.sin(idx / 1.8) * 3).toFixed(1)
+      val: Math.round(result.indexVal + Math.sin((idx - 2) / 2) * 4),
+      temp: +(temp + Math.sin((idx - 2) / 2) * 2.2).toFixed(1),
+      raw: idx
     }));
   };
 
-  const getDaysData = () => {
+  const getDaysList = () => {
     const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
     return Array.from({ length: daysInMonth }, (_, i) => ({
-      label: `Día ${i + 1}`,
-      raw: i + 1,
-      val: Math.round(result.indexVal + Math.cos(i / 3) * 4),
-      temp: +(temp + Math.cos(i / 3) * 2).toFixed(1)
+      label: `${i + 1}`, // SOLO NÚMERO PARA NO SATURAR EL EJE X
+      val: Math.round(result.indexVal + Math.cos(i / 2.5) * 3),
+      temp: +(temp + Math.cos(i / 2.5) * 1.5).toFixed(1),
+      raw: i + 1
     }));
   };
 
-  const getHoursData = () => {
-    return Array.from({ length: 24 }, (_, i) => ({
-      label: `${i}:00`,
-      raw: i,
-      val: Math.round(result.indexVal - 8 + (i >= 11 && i <= 16 ? 12 : i < 6 ? -4 : 4)),
-      temp: +(temp - 3 + (i >= 11 && i <= 16 ? 6 : i < 6 ? -2 : 2)).toFixed(1)
-    }));
+  const getHoursList = () => {
+    return Array.from({ length: 24 }, (_, i) => {
+      const peak = i >= 11 && i <= 16 ? (i === 13 || i === 14 ? 7 : 5) : i < 6 ? -5 : 1;
+      return {
+        label: `${i}:00`,
+        val: Math.round(result.indexVal + peak),
+        temp: +(temp + peak * 0.5).toFixed(1),
+        raw: i
+      };
+    });
   };
 
-  const getChartDataForCurrentLevel = () => {
+  const getChartData = () => {
     switch (drillLevel) {
-      case 'year': return getYearsData();
-      case 'month': return getMonthsData();
-      case 'day': return getDaysData();
-      case 'hour': return getHoursData();
+      case 'year': return getYearsList();
+      case 'month': return getMonthsList();
+      case 'day': return getDaysList();
+      case 'hour':
+      default: return getHoursList();
     }
   };
 
-  // Manejo de clic en las barras de la gráfica para profundizar
-  const handleChartClick = (entry: any) => {
+  const handleChartPointClick = (entry: any) => {
     if (!entry || !entry.activePayload || !entry.activePayload[0]) return;
     const clicked = entry.activePayload[0].payload;
     if (drillLevel === 'year') {
@@ -385,14 +397,12 @@ export default function HomePage() {
     }
   };
 
-  const goBackDrillLevel = () => {
-    if (drillLevel === 'hour') setDrillLevel('day');
-    else if (drillLevel === 'day') setDrillLevel('month');
-    else if (drillLevel === 'month') setDrillLevel('year');
-  };
-
   const mesesNombres = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
   const thresholdLineValue = livestockMode === 'dairy' ? 25 : 77;
+  const themeColor = livestockMode === 'dairy' ? '#2563EB' : '#DC2626';
+
+  // Desplazamiento solar para el mapa térmico basado en el mes (estaciones científicas reales)
+  const solarLatitudeShift = Math.sin(((selectedMonth - 2.5) / 12) * 2 * Math.PI) * 23;
 
   return (
     <main className={`min-h-screen transition-colors duration-500 ${livestockMode === 'dairy' ? 'bg-[#F8FAFC]' : 'bg-[#FFFDFB]'} text-slate-800 font-sans`}>
@@ -400,7 +410,7 @@ export default function HomePage() {
       {/* PANTALLA INICIAL DE SELECCIÓN */}
       {showWelcomeSplash && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-xl w-full p-8 text-center space-y-6 animate-in fade-in zoom-in-95">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-xl w-full p-8 text-center space-y-6">
             <div>
               <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Plataforma zootécnica de precisión</span>
               <h2 className="text-2xl font-black text-slate-900 mt-1">Selecciona el tipo de producción</h2>
@@ -414,7 +424,7 @@ export default function HomePage() {
               >
                 <span className="text-3xl block group-hover:scale-110 transition">🥛</span>
                 <div className="font-bold text-slate-900 text-sm">Bovinos de leche</div>
-                <div className="text-[11px] text-slate-500 leading-tight">Índice DHLI (Lees et al., 2018). Caída en litros y sólidos.</div>
+                <div className="text-[11px] text-slate-500 leading-tight">Algoritmo DHLI (Lees et al., 2018). Caída en litros y sólidos.</div>
               </button>
 
               <button
@@ -423,7 +433,7 @@ export default function HomePage() {
               >
                 <span className="text-3xl block group-hover:scale-110 transition">🥩</span>
                 <div className="font-bold text-slate-900 text-sm">Bovinos de carne</div>
-                <div className="text-[11px] text-slate-500 leading-tight">Índice HLI (Gaughan et al., 2008). Ganancia de peso diaria.</div>
+                <div className="text-[11px] text-slate-500 leading-tight">Algoritmo HLI (Gaughan et al., 2008). Ganancia diaria de peso.</div>
               </button>
             </div>
           </div>
@@ -434,7 +444,6 @@ export default function HomePage() {
       <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm px-4 md:px-8 py-3">
         <div className="max-w-7xl mx-auto flex flex-wrap justify-between items-center gap-3">
           
-          {/* Título Oficial en minúsculas */}
           <div className="flex items-center gap-3">
             <span className="text-2xl">{livestockMode === 'dairy' ? '🥛' : '🥩'}</span>
             <div>
@@ -447,7 +456,6 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Selector Leche vs Carne */}
           <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200">
             <button
               onClick={() => { setLivestockMode('dairy'); setUnitPrice(2200); }}
@@ -463,7 +471,6 @@ export default function HomePage() {
             </button>
           </div>
 
-          {/* Enlace al Manual */}
           <div className="flex items-center">
             <button
               onClick={() => setShowManualModal(true)}
@@ -498,7 +505,6 @@ export default function HomePage() {
 
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
             
-            {/* Texto de Noticia */}
             <div className="md:col-span-5 space-y-2">
               <h2 className="text-lg md:text-xl font-bold text-slate-900 leading-snug">
                 {newsList[activeNewsIdx]?.title}
@@ -517,7 +523,6 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* Imagen Noticia */}
             <div className="md:col-span-3 h-36 rounded-2xl overflow-hidden border border-slate-200 shadow-xs">
               <img
                 src={newsList[activeNewsIdx]?.imageUrl}
@@ -526,7 +531,7 @@ export default function HomePage() {
               />
             </div>
 
-            {/* MODELO 3D REAL FLOTANTE (SIN FONDO, SIN TEXTO, GIRA EN 360°) */}
+            {/* MODELO 3D REAL (TRANSPARENTE, SIN FONDO Y GIRATORIO) */}
             <div className="md:col-span-4 h-44 flex items-center justify-center relative cursor-grab active:cursor-grabbing">
               {React.createElement('model-viewer', {
                 src: livestockMode === 'dairy' ? '/models/cow-dairy.glb' : '/models/bull-beef.glb',
@@ -541,11 +546,10 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* BARRA DE BÚSQUEDA ELEGANTE CON CALCULADORA INCORPORADA */}
+        {/* BARRA DE BÚSQUEDA ELEGANTE CON CALCULADORA ROI */}
         <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm space-y-3">
           <div className="flex flex-wrap gap-2.5 items-center justify-between">
             
-            {/* Buscador predictivo */}
             <div className="flex-1 min-w-[260px] relative">
               <div className="relative">
                 <input
@@ -561,7 +565,6 @@ export default function HomePage() {
                 )}
               </div>
 
-              {/* Lista desplegable predictiva */}
               {searchResults.length > 0 && (
                 <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden divide-y divide-slate-100 max-h-52 overflow-y-auto">
                   {searchResults.map((item, idx) => (
@@ -578,7 +581,7 @@ export default function HomePage() {
               )}
             </div>
 
-            {/* Botón Calculadora integrado en el buscador */}
+            {/* Calculadora ROI en la barra */}
             <button
               onClick={() => setShowFinanceModal(true)}
               className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 border border-slate-200 transition"
@@ -587,7 +590,6 @@ export default function HomePage() {
               <DollarSign className="w-3.5 h-3.5 text-slate-600" /> Calculadora ROI
             </button>
 
-            {/* Botones de acción sobrios */}
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={handleGPS}
@@ -621,7 +623,6 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Formulario de coordenadas manuales */}
           {showCoordsPanel && (
             <form onSubmit={handleManualCoordsSubmit} className="pt-2 border-t border-slate-100 flex flex-wrap gap-2.5 items-end text-xs">
               <div>
@@ -652,7 +653,6 @@ export default function HomePage() {
             </form>
           )}
 
-          {/* Selección de Raza y Nivel Productivo */}
           <div className="pt-2 border-t border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
             <div>
               <label className="text-slate-600 font-semibold block mb-1">
@@ -792,138 +792,208 @@ export default function HomePage() {
 
         </div>
 
-        {/* MÓDULO PREDICTIVO MULTIESCALA EN 4 NIVELES REALES (DRILL-DOWN) */}
+        {/* MÓDULO PREDICTIVO MULTIESCALA EN LÍNEAS CON SELECTORES LIBRES Y ROTULADO COMPLETO */}
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
           
-          {/* Barra de Migas de Pan (Breadcrumbs) y Control de Nivel */}
+          {/* Barra de Migas de Pan + Filtros de Selección Libre */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
             <div>
               <h3 className="font-bold text-sm text-slate-900">Módulo predictivo y análisis multiescala</h3>
               <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-0.5">
-                <span className={drillLevel === 'year' ? 'font-bold text-slate-800' : 'cursor-pointer hover:underline'} onClick={() => setDrillLevel('year')}>
+                <button onClick={() => setDrillLevel('year')} className={drillLevel === 'year' ? 'font-bold text-blue-600 underline' : 'hover:text-slate-800'}>
                   Años
-                </span>
+                </button>
                 <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
-                <span className={drillLevel === 'month' ? 'font-bold text-slate-800' : 'cursor-pointer hover:underline'} onClick={() => setDrillLevel('month')}>
-                  Año {selectedYear}
-                </span>
-                {drillLevel !== 'year' && (
-                  <>
-                    <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
-                    <span className={drillLevel === 'day' ? 'font-bold text-slate-800' : 'cursor-pointer hover:underline'} onClick={() => setDrillLevel('day')}>
-                      {mesesNombres[selectedMonth]}
-                    </span>
-                  </>
-                )}
-                {drillLevel === 'hour' && (
-                  <>
-                    <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
-                    <span className="font-bold text-slate-800">Día {selectedDay} ({selectedHour}:00)</span>
-                  </>
-                )}
+                <button onClick={() => setDrillLevel('month')} className={drillLevel === 'month' ? 'font-bold text-blue-600 underline' : 'hover:text-slate-800'}>
+                  Meses ({selectedYear})
+                </button>
+                <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
+                <button onClick={() => setDrillLevel('day')} className={drillLevel === 'day' ? 'font-bold text-blue-600 underline' : 'hover:text-slate-800'}>
+                  Días ({mesesNombres[selectedMonth]})
+                </button>
+                <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
+                <button onClick={() => setDrillLevel('hour')} className={drillLevel === 'hour' ? 'font-bold text-blue-600 underline' : 'hover:text-slate-800'}>
+                  Horas (Día {selectedDay})
+                </button>
               </div>
             </div>
 
-            {/* Botón Volver de Nivel */}
-            {drillLevel !== 'year' && (
-              <button
-                onClick={goBackDrillLevel}
-                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1 transition"
+            {/* Selectores Directos para Consultar Cualquier Fecha */}
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <select
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-slate-800 font-semibold"
               >
-                <ArrowLeft className="w-3.5 h-3.5" /> Volver al nivel anterior
-              </button>
-            )}
+                {Array.from({ length: 61 }, (_, i) => 1980 + i * 2).map((yr) => (
+                  <option key={yr} value={yr}>Año {yr}</option>
+                ))}
+              </select>
+
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-slate-800 font-semibold"
+              >
+                {mesesNombres.map((m, idx) => (
+                  <option key={idx} value={idx}>{m}</option>
+                ))}
+              </select>
+
+              <select
+                value={selectedDay}
+                onChange={(e) => setSelectedDay(Number(e.target.value))}
+                className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-slate-800 font-semibold"
+              >
+                {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                  <option key={d} value={d}>Día {d}</option>
+                ))}
+              </select>
+
+              {drillLevel !== 'year' && (
+                <button
+                  onClick={() => {
+                    if (drillLevel === 'hour') setDrillLevel('day');
+                    else if (drillLevel === 'day') setDrillLevel('month');
+                    else if (drillLevel === 'month') setDrillLevel('year');
+                  }}
+                  className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold flex items-center gap-1"
+                >
+                  <ArrowLeft className="w-3 h-3" /> Nivel anterior
+                </button>
+              )}
+            </div>
           </div>
 
+          {/* Subtítulo dinámico con instrucciones de clic */}
           <div className="flex justify-between items-center text-xs text-slate-500">
             <span>
-              {drillLevel === 'year' && 'Haz clic en cualquier año para ver sus 12 meses:'}
-              {drillLevel === 'month' && `Meses de ${selectedYear} (haz clic en un mes para ver sus días):`}
+              {drillLevel === 'year' && 'Línea de tendencia histórica y futura (haz clic en un punto para ver sus meses):'}
+              {drillLevel === 'month' && `Variación mensual de ${selectedYear} (haz clic en un mes para ver sus días):`}
               {drillLevel === 'day' && `Días de ${mesesNombres[selectedMonth]} de ${selectedYear} (haz clic en un día para ver sus 24 horas):`}
-              {drillLevel === 'hour' && `Horas del día ${selectedDay} de ${mesesNombres[selectedMonth]} (haz clic en una hora para seleccionarla):`}
+              {drillLevel === 'hour' && `Curva horaria del día ${selectedDay} de ${mesesNombres[selectedMonth]} (00:00 a 23:00):`}
             </span>
             <span className="text-red-500 font-semibold">
-              --- Umbral ({thresholdLineValue} {livestockMode === 'dairy' ? 'DHLI' : 'HLI'})
+              --- Umbral crítico ({thresholdLineValue} {livestockMode === 'dairy' ? 'DHLI' : 'HLI'})
             </span>
           </div>
 
-          {/* Gráfica Reactiva e Interactiva con Clics */}
+          {/* GRÁFICA DE LÍNEAS CONTINUAS CON EJES TOTALMENTE ETIQUETADOS */}
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={getChartDataForCurrentLevel()} onClick={handleChartClick} className="cursor-pointer">
+              <LineChart data={getChartData()} onClick={handleChartPointClick} className="cursor-pointer">
                 <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
-                <XAxis dataKey="label" stroke="#94A3B8" fontSize={11} />
-                <YAxis domain={[0, livestockMode === 'dairy' ? 100 : 120]} stroke="#94A3B8" fontSize={11} />
+                <XAxis 
+                  dataKey="label" 
+                  stroke="#64748B" 
+                  fontSize={11}
+                  interval={0}
+                  label={{ 
+                    value: drillLevel === 'hour' ? 'Hora del día' : drillLevel === 'day' ? 'Días del mes' : drillLevel === 'month' ? 'Meses del año' : 'Año', 
+                    position: 'insideBottom', 
+                    offset: -5,
+                    fill: '#64748B',
+                    fontSize: 11
+                  }} 
+                />
+                <YAxis 
+                  domain={[0, livestockMode === 'dairy' ? 100 : 120]} 
+                  stroke="#64748B" 
+                  fontSize={11}
+                  label={{ 
+                    value: livestockMode === 'dairy' ? 'Índice DHLI' : 'Índice HLI', 
+                    angle: -90, 
+                    position: 'insideLeft', 
+                    offset: 10,
+                    fill: '#64748B',
+                    fontSize: 11
+                  }}
+                />
                 <Tooltip
                   contentStyle={{ backgroundColor: '#FFFFFF', borderColor: '#E2E8F0', borderRadius: '12px', fontSize: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}
-                  formatter={(value: any) => [`${value} (${livestockMode === 'dairy' ? 'DHLI' : 'HLI'})`, 'Estrés Térmico']}
+                  formatter={(value: any) => [`${value} (${livestockMode === 'dairy' ? 'DHLI' : 'HLI'})`, 'Estrés térmico']}
                 />
                 <ReferenceLine y={thresholdLineValue} stroke="#EF4444" strokeDasharray="4 4" strokeWidth={1.5} />
-                <Bar
+                <Line
+                  type="monotone"
                   dataKey="val"
-                  fill={livestockMode === 'dairy' ? '#2563EB' : '#DC2626'}
-                  radius={[6, 6, 0, 0]}
+                  stroke={themeColor}
+                  strokeWidth={3}
+                  activeDot={{ r: 7, stroke: '#FFFFFF', strokeWidth: 2 }}
+                  dot={{ r: 3, fill: themeColor }}
                 />
-              </BarChart>
+              </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-        {/* NUEVO MAPA DE CALOR GLOBAL CIENTÍFICO (SINCRONIZADO CON EL TIEMPO) */}
+        {/* MAPA DE CALOR GLOBAL CIENTÍFICO SINCRONIZADO CON EL TIEMPO */}
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
             <div>
               <h3 className="font-bold text-sm text-slate-900">Distribución global de estrés térmico (Mapa térmico raster)</h3>
               <p className="text-xs text-slate-500">
-                Visualización bioclimática global sincronizada con {mesesNombres[selectedMonth]} {selectedYear} ({selectedHour}:00 UTC)
+                Sincronizado con: {selectedDay} de {mesesNombres[selectedMonth]} de {selectedYear} ({selectedHour}:00 UTC)
               </p>
             </div>
             <div className="text-xs font-semibold px-3 py-1 bg-slate-100 text-slate-700 rounded-xl">
-              Proyección Robinson / Cilíndrica global
+              Proyección global con estacionalidad bioclimática
             </div>
           </div>
 
-          {/* Lienzo del Mapa Térmico */}
-          <div className="relative h-64 md:h-80 w-full rounded-2xl overflow-hidden border border-slate-200 bg-[#E0F2FE]">
-            {/* Capa térmica de latitud simulada idéntica a la publicación */}
+          {/* Lienzo del Mapa con Continentes Reales y Gradiente Térmico */}
+          <div className="relative h-64 md:h-80 w-full rounded-2xl overflow-hidden border border-slate-200 bg-[#0B192C]">
+            
+            {/* Gradiente térmico estacional dinámico */}
             <div
-              className="absolute inset-0 opacity-85"
+              className="absolute inset-0 opacity-80 transition-all duration-700"
               style={{
                 background: `linear-gradient(to bottom, 
                   #1E3A8A 0%, 
-                  #60A5FA 18%, 
-                  #FEF3C7 35%, 
-                  #B45309 45%, 
-                  #7F1D1D 50%, 
-                  #B45309 58%, 
-                  #FEF3C7 70%, 
-                  #60A5FA 85%, 
+                  #3B82F6 ${Math.max(10, 20 + solarLatitudeShift * 0.3)}%, 
+                  #FEF3C7 ${Math.max(25, 40 + solarLatitudeShift * 0.4)}%, 
+                  #B45309 ${50 + solarLatitudeShift * 0.4}%, 
+                  #7F1D1D ${52 + solarLatitudeShift * 0.4}%, 
+                  #B45309 ${Math.min(75, 60 + solarLatitudeShift * 0.4)}%, 
+                  #FEF3C7 ${Math.min(85, 75 + solarLatitudeShift * 0.3)}%, 
+                  #3B82F6 92%, 
                   #1E3A8A 100%)`
               }}
             />
-            {/* Silueta de continentes (SVG overlay) */}
-            <svg viewBox="0 0 1000 500" className="absolute inset-0 w-full h-full pointer-events-none opacity-40 mix-blend-multiply stroke-slate-900 stroke-[0.8] fill-slate-800">
-              {/* América */}
-              <path d="M 180,80 Q 240,110 220,180 Q 250,210 270,250 Q 300,320 280,420 Q 260,380 240,300 Q 200,240 160,180 Z" />
-              {/* Eurasia y África */}
-              <path d="M 480,90 Q 650,80 750,150 Q 820,220 780,280 Q 720,240 680,180 Q 560,140 480,180 Q 520,280 540,360 Q 500,420 460,350 Q 440,240 460,180 Z" />
-              {/* Oceanía */}
-              <path d="M 760,320 Q 840,310 860,360 Q 820,400 780,380 Z" />
+
+            {/* CONTINENTES REALES DE LA TIERRA (GEOMETRÍA CARTOGRÁFICA) */}
+            <svg viewBox="0 0 1000 500" className="absolute inset-0 w-full h-full pointer-events-none opacity-60 mix-blend-multiply stroke-slate-900 stroke-[1.2] fill-slate-700">
+              {/* América del Norte */}
+              <path d="M 120,60 L 160,50 L 220,55 L 260,80 L 280,120 L 250,150 L 240,190 L 210,210 L 180,240 L 170,220 L 150,200 L 130,160 L 90,130 L 100,80 Z" />
+              {/* América Central y Sur */}
+              <path d="M 210,210 L 240,240 L 270,260 L 320,300 L 330,350 L 310,400 L 280,450 L 260,460 L 250,420 L 250,350 L 220,300 L 200,250 Z" />
+              {/* Europa */}
+              <path d="M 450,80 L 520,70 L 560,90 L 580,130 L 550,160 L 510,170 L 480,190 L 460,170 L 450,130 L 430,110 Z" />
+              {/* África */}
+              <path d="M 460,190 L 540,180 L 590,230 L 610,290 L 580,360 L 540,410 L 500,420 L 470,360 L 450,280 L 440,220 Z" />
+              {/* Asia */}
+              <path d="M 580,80 L 680,60 L 780,70 L 880,100 L 870,160 L 820,200 L 780,260 L 740,280 L 700,230 L 680,180 L 620,170 L 580,130 Z" />
+              {/* Oceanía / Australia */}
+              <path d="M 780,320 L 860,310 L 900,350 L 880,410 L 820,420 L 770,380 Z" />
+              {/* Groenlandia */}
+              <path d="M 290,40 L 340,30 L 360,60 L 330,90 L 300,70 Z" />
             </svg>
 
-            {/* Marcador de la coordenada seleccionada */}
+            {/* Marcador del predio consultado */}
             {selectedCoords && (
               <div
-                className="absolute w-4 h-4 -ml-2 -mt-2 rounded-full bg-white border-2 border-slate-900 shadow-md animate-ping"
+                className="absolute w-5 h-5 -ml-2.5 -mt-2.5 rounded-full bg-white border-2 border-slate-900 shadow-xl flex items-center justify-center animate-bounce"
                 style={{
                   left: `${((lon + 180) / 360) * 100}%`,
                   top: `${((90 - lat) / 180) * 100}%`
                 }}
-              />
+              >
+                <div className="w-2 h-2 rounded-full bg-red-600" />
+              </div>
             )}
           </div>
 
-          {/* Barra de escala científica idéntica a la imagen */}
+          {/* Barra de escala científica idéntica al estudio */}
           <div className="space-y-1.5 pt-2">
             <div className="h-4 w-full rounded-md shadow-inner" style={{
               background: 'linear-gradient(to right, #1E3A8A, #3B82F6, #93C5FD, #FDE68A, #F59E0B, #DC2626, #7F1D1D)'
@@ -945,12 +1015,12 @@ export default function HomePage() {
       <button
         onClick={handleSendWhatsAppAlert}
         className="fixed bottom-24 right-6 z-40 w-12 h-12 bg-slate-900 hover:bg-slate-800 text-white rounded-full shadow-lg border border-slate-700 flex items-center justify-center transition-transform hover:scale-110"
-        title="Enviar reporte por WhatsApp"
+        title="Enviar alerta zootécnica por WhatsApp"
       >
         <MessageCircle className="w-5 h-5 text-emerald-400" />
       </button>
 
-      {/* ASISTENTE ZOOTÉCNICO IA (ESQUINA INFERIOR DERECHA) */}
+      {/* ASISTENTE ZOOTÉCNICO IA */}
       <AiChatbot
         context={{
           placeName,
@@ -1072,7 +1142,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* MODAL DEL MANUAL DE USUARIO (SOLO LECTURA Y DESCARGA) */}
+      {/* MODAL DEL MANUAL DE USUARIO */}
       {showManualModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-xl w-full p-6 space-y-4 border border-slate-200 shadow-xl max-h-[85vh] overflow-y-auto">
@@ -1084,11 +1154,11 @@ export default function HomePage() {
             </div>
 
             <div className="space-y-3 text-xs text-slate-600 leading-relaxed">
-              <p><strong>1. Búsqueda y geolocalización:</strong> Puedes escribir el municipio en la barra de búsqueda superior, activar tu GPS con el botón respectivo o ingresar coordenadas manuales.</p>
+              <p><strong>1. Búsqueda y geolocalización:</strong> Puedes escribir el municipio en la barra de búsqueda superior, activar tu GPS o ingresar coordenadas manuales.</p>
               <p><strong>2. Interpretación de los índices:</strong></p>
               <ul className="list-disc pl-5 space-y-1">
                 <li><strong>Leche (DHLI):</strong> Umbral en 25. Por encima de 25 inicia la caída en litros y la alteración de sólidos lácteos.</li>
-                <li><strong>Carne (HLI):</strong> Umbral en 77. Valores superiores causan disminución en el consumo de materia seca y ganancia de peso diaria.</li>
+                <li><strong>Carne (HLI):</strong> Umbral en 77. Valores superiores causan disminución en el consumo voluntario de materia seca y ganancia de peso diaria.</li>
               </ul>
               <p><strong>3. Mitigación con sombra:</strong> El botón de sombra simula la intercepción del 80% de radiación directa (árboles en silvopastoreo o polisombra), amortiguando la temperatura de globo negro (BGT).</p>
             </div>
@@ -1128,7 +1198,7 @@ export default function HomePage() {
               </div>
               <div>
                 <label className="text-slate-500 block mb-0.5">Moneda:</label>
-                <select value={currencySymbol} onChange={(e) => setCurrencySymbol(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 font-semibold">
+                <select value={currencySymbol} onChange={(e) => setCurrencySymbol(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-semibold">
                   <option value="COP ($)">COP ($)</option>
                   <option value="USD ($)">USD ($)</option>
                   <option value="BRL (R$)">BRL (R$)</option>
