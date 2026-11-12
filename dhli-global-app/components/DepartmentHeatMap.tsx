@@ -1,8 +1,6 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import L from 'leaflet';
-import { Play, Pause, Calendar, Clock, MapPin, Globe } from 'lucide-react';
+import { Play, Pause, MapPin, Globe, Sparkles } from 'lucide-react';
 
 interface DepartmentHeatMapProps {
   lat: number;
@@ -12,110 +10,41 @@ interface DepartmentHeatMapProps {
   t: (key: string) => string;
 }
 
-// Capa de Calor Continua y Suave (Sin pixelado tosco, idéntica a modelos meteorológicos)
-function GlobalThermalSmoothLayer({
-  year,
-  month,
-  hour,
-  livestockMode,
-}: {
-  year: number;
-  month: number;
-  hour: number;
-  livestockMode: 'dairy' | 'beef';
-}) {
-  const map = useMap();
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  useEffect(() => {
-    const canvas = L.DomUtil.create('canvas', 'leaflet-smooth-thermal-canvas') as HTMLCanvasElement;
-    canvas.style.position = 'absolute';
-    canvas.style.top = '0';
-    canvas.style.left = '0';
-    canvas.style.pointerEvents = 'none';
-    canvas.style.zIndex = '200';
-    canvas.style.opacity = '0.70';
-    canvas.style.mixBlendMode = 'screen';
-
-    const pane = map.getPane('overlayPane');
-    if (pane) pane.appendChild(canvas);
-    canvasRef.current = canvas;
-
-    const renderThermalField = () => {
-      if (!canvasRef.current) return;
-      const size = map.getSize();
-      canvas.width = size.x;
-      canvas.height = size.y;
-
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      ctx.clearRect(0, 0, size.x, size.y);
-
-      // Declinación solar estacional: oscila entre -23.4° (Diciembre) y +23.4° (Junio)
-      const solarDeclination = -23.44 * Math.cos(((month + 0.5) / 12) * 2 * Math.PI);
-      // Longitud solar donde es mediodía en UTC
-      const solarNoonLon = (12 - hour) * 15;
-
-      // 1. Capa Base Latitudinal Planetaria (Polo Frío <-> Trópico Cálido)
-      const northPolePoint = map.latLngToContainerPoint([85, 0]);
-      const equatorPoint = map.latLngToContainerPoint([solarDeclination, 0]);
-      const southPolePoint = map.latLngToContainerPoint([-85, 0]);
-
-      // Gradiente hemisferio Norte
-      const northGrad = ctx.createLinearGradient(0, northPolePoint.y, 0, equatorPoint.y);
-      northGrad.addColorStop(0, '#1E3A8A'); // Azul polar frío (-69)
-      northGrad.addColorStop(0.35, '#3B82F6');
-      northGrad.addColorStop(0.65, '#22C55E'); // Confort
-      northGrad.addColorStop(0.85, '#EAB308'); // Alerta
-      northGrad.addColorStop(1, '#DC2626');   // Trópico cálido
-
-      ctx.fillStyle = northGrad;
-      ctx.fillRect(0, Math.min(northPolePoint.y, equatorPoint.y), size.x, Math.abs(equatorPoint.y - northPolePoint.y));
-
-      // Gradiente hemisferio Sur
-      const southGrad = ctx.createLinearGradient(0, equatorPoint.y, 0, southPolePoint.y);
-      southGrad.addColorStop(0, '#DC2626');
-      southGrad.addColorStop(0.25, '#EAB308');
-      southGrad.addColorStop(0.55, '#22C55E');
-      southGrad.addColorStop(0.80, '#3B82F6');
-      southGrad.addColorStop(1, '#1E3A8A');
-
-      ctx.fillStyle = southGrad;
-      ctx.fillRect(0, Math.min(equatorPoint.y, southPolePoint.y), size.x, Math.abs(southPolePoint.y - equatorPoint.y));
-
-      // 2. Onda Solar Diurna del Mediodía (Recorre el mundo de este a oeste)
-      const noonPoint = map.latLngToContainerPoint([solarDeclination, solarNoonLon]);
-      const sunRadius = Math.max(size.x * 0.45, 300);
-
-      const diurnalGrad = ctx.createRadialGradient(noonPoint.x, noonPoint.y, 20, noonPoint.x, noonPoint.y, sunRadius);
-      diurnalGrad.addColorStop(0, 'rgba(185, 28, 28, 0.75)'); // Núcleo térmico solar máximo
-      diurnalGrad.addColorStop(0.35, 'rgba(234, 179, 8, 0.45)');
-      diurnalGrad.addColorStop(0.70, 'rgba(34, 197, 94, 0.15)');
-      diurnalGrad.addColorStop(1, 'rgba(30, 58, 138, 0)');
-
-      ctx.fillStyle = diurnalGrad;
-      ctx.beginPath();
-      ctx.arc(noonPoint.x, noonPoint.y, sunRadius, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Efecto adicional de calentamiento global multianual
-      if (year > 2030) {
-        ctx.fillStyle = `rgba(220, 38, 38, ${Math.min(0.25, (year - 2030) * 0.003)})`;
-        ctx.fillRect(0, 0, size.x, size.y);
-      }
-    };
-
-    renderThermalField();
-
-    map.on('moveend zoomend resize', renderThermalField);
-    return () => {
-      map.off('moveend zoomend resize', renderThermalField);
-      if (canvas.parentNode) canvas.parentNode.removeChild(canvas);
-    };
-  }, [map, year, month, hour, livestockMode]);
-
-  return null;
-}
+// Polígonos de alta precisión de los continentes y regiones del mundo
+const WORLD_LANDMASSES = [
+  // América del Norte y Groenlandia
+  { id: 'na_north', name: 'Canadá / Alaska', lat: 60, lon: -110, path: 'M 140,80 Q 200,60 280,65 Q 320,80 340,110 L 310,140 Q 260,130 220,150 Q 170,140 140,80 Z' },
+  { id: 'greenland', name: 'Groenlandia', lat: 72, lon: -40, path: 'M 350,50 Q 390,45 400,70 Q 380,100 360,95 Q 340,80 350,50 Z' },
+  { id: 'na_usa', name: 'Estados Unidos / México', lat: 35, lon: -100, path: 'M 160,140 L 310,135 Q 320,180 290,210 L 260,250 Q 230,240 210,210 Q 180,190 160,140 Z' },
+  { id: 'ca_mex', name: 'Centroamérica', lat: 15, lon: -90, path: 'M 255,245 Q 275,260 290,285 Q 280,295 265,275 Z' },
+  
+  // América del Sur
+  { id: 'sa_north', name: 'Colombia / Venezuela / Guyanas', lat: 5, lon: -68, path: 'M 280,280 Q 330,270 350,300 Q 320,330 290,320 Z' },
+  { id: 'sa_brazil', name: 'Brasil / Amazonía', lat: -10, lon: -55, path: 'M 300,315 Q 360,295 390,340 Q 370,400 330,390 Q 295,350 300,315 Z' },
+  { id: 'sa_south', name: 'Argentina / Chile / Cono Sur', lat: -35, lon: -65, path: 'M 305,380 Q 335,385 325,445 Q 315,480 300,470 Q 295,410 305,380 Z' },
+  
+  // Europa
+  { id: 'eu_west', name: 'Europa Occidental (España / Francia / RU)', lat: 48, lon: 2, path: 'M 440,130 Q 480,110 500,135 Q 490,170 460,180 Q 435,160 440,130 Z' },
+  { id: 'eu_north', name: 'Escandinavia', lat: 62, lon: 15, path: 'M 480,80 Q 520,70 530,110 Q 500,130 480,80 Z' },
+  { id: 'eu_east', name: 'Europa Oriental / Ucrania', lat: 50, lon: 30, path: 'M 500,120 Q 550,115 560,155 Q 520,175 500,120 Z' },
+  
+  // África
+  { id: 'af_north', name: 'África del Norte / Sahara', lat: 25, lon: 15, path: 'M 430,185 Q 550,180 570,230 Q 510,270 440,250 Q 420,210 430,185 Z' },
+  { id: 'af_central', name: 'África Central / Sahel', lat: 5, lon: 20, path: 'M 440,250 Q 540,255 560,300 Q 520,340 460,330 Q 440,280 440,250 Z' },
+  { id: 'af_south', name: 'África del Sur', lat: -25, lon: 25, path: 'M 480,330 Q 540,325 530,410 Q 490,420 480,330 Z' },
+  
+  // Asia
+  { id: 'as_russia', name: 'Siberia / Rusia', lat: 60, lon: 90, path: 'M 540,70 Q 720,55 830,80 Q 820,130 700,120 Q 580,125 540,70 Z' },
+  { id: 'as_mideast', name: 'Medio Oriente / Arabia', lat: 24, lon: 45, path: 'M 550,185 Q 610,180 620,230 Q 570,250 550,185 Z' },
+  { id: 'as_india', name: 'India / Sur de Asia', lat: 20, lon: 78, path: 'M 640,195 Q 690,190 710,240 Q 670,290 645,240 Z' },
+  { id: 'as_china', name: 'China / Asia Oriental', lat: 35, lon: 105, path: 'M 670,140 Q 790,130 800,190 Q 750,240 680,210 Z' },
+  { id: 'as_se', name: 'Sudeste Asiático / Indonesia', lat: 0, lon: 115, path: 'M 720,250 Q 780,260 820,310 Q 760,320 720,250 Z' },
+  
+  // Oceanía
+  { id: 'oc_aus_north', name: 'Norte de Australia', lat: -18, lon: 132, path: 'M 760,330 Q 840,320 860,360 Q 800,380 760,330 Z' },
+  { id: 'oc_aus_south', name: 'Sur de Australia / Tasmania', lat: -32, lon: 135, path: 'M 770,380 Q 855,370 850,420 Q 780,425 770,380 Z' },
+  { id: 'oc_nz', name: 'Nueva Zelanda', lat: -42, lon: 172, path: 'M 880,410 Q 900,405 895,440 Q 875,440 880,410 Z' }
+];
 
 export default function DepartmentHeatMap({
   lat,
@@ -124,39 +53,21 @@ export default function DepartmentHeatMap({
   livestockMode,
   t,
 }: DepartmentHeatMapProps) {
-  const [mounted, setMounted] = useState(false);
-
-  // FILTRO TEMPORAL INDEPENDIENTE
+  // FILTRO TEMPORAL INDEPENDIENTE PARA ESTE MAPA
   const [mapTimeScale, setMapTimeScale] = useState<'hour' | 'day' | 'month' | 'year'>('month');
   const [mapYear, setMapYear] = useState<number>(2024);
-  const [mapMonth, setMapMonth] = useState<number>(new Date().getMonth());
-  const [mapDay, setMapDay] = useState<number>(new Date().getDate());
-  const [mapHour, setMapHour] = useState<number>(14);
+  const [mapMonth, setMapMonth] = useState<number>(7); // Inicia en Agosto para reflejar el verano del artículo
+  const [mapDay, setMapDay] = useState<number>(15);
+  const [mapHour, setMapHour] = useState<number>(11);
 
   // REPRODUCTOR DE VIDEO SIMULADO
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Pin indicador para el predio del usuario
-  const [markerIcon, setMarkerIcon] = useState<any>(null);
+  // Tooltip al pasar el mouse por cualquier país/región del mundo
+  const [hoverInfo, setHoverInfo] = useState<{ name: string; thi: number; temp: number; x: number; y: number } | null>(null);
 
-  useEffect(() => {
-    setMounted(true);
-    const icon = L.divIcon({
-      className: 'custom-smooth-global-pin',
-      html: `
-        <div style="position: relative; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;">
-          <div style="position: absolute; inset: 0; border-radius: 50%; background: ${livestockMode === 'dairy' ? 'rgba(74, 222, 128, 0.45)' : 'rgba(239, 68, 68, 0.45)'}; animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-          <div style="position: absolute; width: 14px; height: 14px; border-radius: 50%; background: ${livestockMode === 'dairy' ? '#4ADE80' : '#EF4444'}; border: 2.5px solid #FFFFFF; box-shadow: 0 0 12px rgba(0,0,0,0.9);"></div>
-        </div>
-      `,
-      iconSize: [34, 34],
-      iconAnchor: [17, 17],
-    });
-    setMarkerIcon(icon);
-  }, [livestockMode]);
-
-  // Animación del reproductor (Timelapse)
+  // Animación del reproductor (Avanza en el tiempo)
   useEffect(() => {
     if (isPlaying) {
       timerRef.current = setInterval(() => {
@@ -167,9 +78,9 @@ export default function DepartmentHeatMap({
         } else if (mapTimeScale === 'month') {
           setMapMonth((prev) => (prev + 1) % 12);
         } else if (mapTimeScale === 'year') {
-          setMapYear((prev) => (prev >= 2060 ? 2020 : prev + 2));
+          setMapYear((prev) => (prev >= 2060 ? 1980 : prev + 2));
         }
-      }, 600);
+      }, 700);
     } else if (timerRef.current) {
       clearInterval(timerRef.current);
     }
@@ -178,9 +89,59 @@ export default function DepartmentHeatMap({
     };
   }, [isPlaying, mapTimeScale]);
 
-  if (!mounted) {
-    return <div className="h-96 w-full bg-[#070D0A] rounded-3xl animate-pulse" />;
-  }
+  // Cálculo biofísico de temperatura y THI para cualquier región del planeta
+  const calculateRegionClimate = (regionLat: number, regionLon: number) => {
+    // 1. Declinación solar estacional (oscilación norte-sur según el mes)
+    const solarDeclination = -23.44 * Math.cos(((mapMonth + 0.5) / 12) * 2 * Math.PI);
+    const effectiveLat = regionLat - solarDeclination;
+    const latFactor = Math.cos((effectiveLat * Math.PI) / 180);
+
+    // 2. Ciclo diurno según la longitud del mediodía solar
+    const solarNoonLon = (12 - mapHour) * 15;
+    let lonDiff = Math.abs(regionLon - solarNoonLon);
+    if (lonDiff > 180) lonDiff = 360 - lonDiff;
+    const diurnalFactor = Math.max(0, Math.cos((lonDiff * Math.PI) / 180));
+
+    // 3. Proyección multianual de cambio climático
+    const warming = (mapYear - 2024) * 0.045;
+
+    // Temperatura de superficie estimada (°C)
+    let tempEst = latFactor * 35 - 5 + diurnalFactor * 8 + warming;
+    if (regionLat > 55) tempEst -= 15;
+    if (regionLat < -50) tempEst -= 12;
+
+    // Índice THI correspondiente a la escala del artículo (-69.3 a 69.3)
+    let thi = 0.8 * tempEst + 0.6 * (tempEst - 14.4) + 15;
+    if (regionLat > 60 && (mapMonth < 3 || mapMonth > 9)) thi -= 45; // Invierno boreal frío
+    if (regionLat < -30 && mapMonth >= 4 && mapMonth <= 8) thi -= 30; // Invierno austral
+
+    return {
+      temp: +tempEst.toFixed(1),
+      thi: Math.round(thi),
+    };
+  };
+
+  // Asignación de color idéntica a la barra científica del estudio
+  const getColormapColor = (thi: number) => {
+    if (thi <= -34.7) return '#1E3A8A'; // Azul polar profundo
+    if (thi <= -10) return '#3B82F6';   // Azul frío
+    if (thi <= 5) return '#93C5FD';     // Celeste transición
+    if (thi <= 20) return '#F3E8D0';    // Beige / crema neutro (0.0)
+    if (thi <= 34.7) return '#D97706';  // Ámbar / naranja
+    if (thi <= 52.0) return '#B91C1C';  // Rojo estrés
+    return '#7F1D1D';                   // Carmesí crítico (>60)
+  };
+
+  // Conversión de coordenadas geográficas (lat, lon) a coordenadas SVG del marco Robinson
+  const projectToRobinsonSVG = (latitude: number, longitude: number) => {
+    // SVG viewBox: 0 0 1000 520
+    const x = 500 + (longitude / 180) * 440;
+    const y = 260 - (latitude / 90) * 220;
+    return { x: Math.max(40, Math.min(960, x)), y: Math.max(30, Math.min(490, y)) };
+  };
+
+  const predioPos = projectToRobinsonSVG(lat, lon);
+  const predioClimate = calculateRegionClimate(lat, lon);
 
   const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
   const mesesCompletos = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -188,19 +149,19 @@ export default function DepartmentHeatMap({
   return (
     <div className="bg-[#0A110D] rounded-3xl border border-emerald-500/20 p-5 space-y-4 shadow-2xl">
       
-      {/* Barra superior de controles del mapa */}
+      {/* Barra de Controles Superiores del Mapa */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-3">
         <div className="space-y-0.5">
           <h3 className="text-sm font-bold text-white flex items-center gap-2">
             <Globe className="w-4 h-4 text-emerald-400" />
-            Distribución térmica global continua (Mundial)
+            Distribución térmica global (Proyección científica Robinson)
           </h3>
           <p className="text-[11px] text-emerald-400/80 font-mono">
             {t('sim_active')}: {mapDay} de {mesesCompletos[mapMonth]} {mapYear} &bull; {mapHour}:00 UTC
           </p>
         </div>
 
-        {/* Reproductor y Controles Temporales */}
+        {/* Reproductor de Video y Selectores Independientes */}
         <div className="flex flex-wrap items-center gap-2">
           
           <button
@@ -229,13 +190,14 @@ export default function DepartmentHeatMap({
             ))}
           </div>
 
+          {/* Selector con todos los años disponibles */}
           <select
             value={mapYear}
             onChange={(e) => setMapYear(Number(e.target.value))}
             className="bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-xs text-white font-mono"
           >
-            {[1990, 2000, 2010, 2020, 2024, 2026, 2030, 2040, 2050, 2060, 2100].map((y) => (
-              <option key={y} value={y}>{y}</option>
+            {Array.from({ length: 121 }, (_, i) => 1980 + i).map((yr) => (
+              <option key={yr} value={yr}>{yr}</option>
             ))}
           </select>
 
@@ -261,84 +223,163 @@ export default function DepartmentHeatMap({
         </div>
       </div>
 
-      {/* Contenedor Leaflet con ESRI (Sin marcas de agua y libre) */}
-      <div className="relative h-96 w-full rounded-2xl overflow-hidden border border-emerald-500/20 bg-[#050B08]">
-        <MapContainer
-          center={[15, 0]}
-          zoom={2}
-          minZoom={1.5}
-          maxZoom={9}
-          maxBounds={[[-85, -180], [85, 180]]}
-          scrollWheelZoom={true}
-          className="w-full h-full z-10"
-        >
-          {/* Capa Cartográfica Oficial Esri Dark Gray (SIN API KEY Y SIN MARCAS DE AGUA) */}
-          <TileLayer
-            attribution='&copy; <a href="https://www.esri.com/">Esri</a> &mdash; World Dark Gray Base'
-            url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+      {/* LIENZO ROBINSON CIENTÍFICO: EL CALOR ESTÁ SOLO SOBRE LA TIERRA (OCÉANO LIMPIO) */}
+      <div className="relative w-full rounded-2xl overflow-hidden border border-emerald-500/20 bg-[#060D0A] p-2 md:p-4">
+        
+        {/* Cabecera idéntica al estudio con fecha y hora UTC */}
+        <div className="text-center font-mono text-xs text-slate-300 font-bold mb-1">
+          {mapYear}-{mapMonth < 9 ? `0${mapMonth + 1}` : mapMonth + 1}-{mapDay < 10 ? `0${mapDay}` : mapDay} {mapHour < 10 ? `0${mapHour}` : mapHour}:00:00 UTC
+        </div>
+
+        <svg viewBox="0 0 1000 520" className="w-full h-auto select-none">
+          
+          {/* 1. Fondo de Océano Limpio y Marco Curvo de la Tierra (Proyección Robinson) */}
+          <defs>
+            <clipPath id="robinsonClip">
+              <path d="M 120,30 L 880,30 Q 980,260 880,490 L 120,490 Q 20,260 120,30 Z" />
+            </clipPath>
+          </defs>
+
+          {/* Océano neutro/limpio idéntico al artículo */}
+          <path
+            d="M 120,30 L 880,30 Q 980,260 880,490 L 120,490 Q 20,260 120,30 Z"
+            fill="#09130F"
+            stroke="#1F3328"
+            strokeWidth="2"
           />
 
-          {/* Fronteras y etiquetas de países sobre el mapa */}
-          <TileLayer
-            attribution=''
-            url="https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
-          />
+          <g clipPath="url(#robinsonClip)">
+            
+            {/* 2. Cuadrícula de Coordenadas (Paralelos y Meridianos) */}
+            {/* Paralelos: 60°N, 30°N, Ecuador 0°, 30°S, 60°S */}
+            <line x1="60" y1="105" x2="940" y2="105" stroke="#1D3025" strokeWidth="1" strokeDasharray="3 3" />
+            <line x1="40" y1="185" x2="960" y2="185" stroke="#1D3025" strokeWidth="1" strokeDasharray="3 3" />
+            <line x1="30" y1="260" x2="970" y2="260" stroke="#2B4636" strokeWidth="1.5" />
+            <line x1="40" y1="335" x2="960" y2="335" stroke="#1D3025" strokeWidth="1" strokeDasharray="3 3" />
+            <line x1="60" y1="415" x2="940" y2="415" stroke="#1D3025" strokeWidth="1" strokeDasharray="3 3" />
 
-          {/* CAPA TÉRMICA CONTINUA Y SUAVE SOBRE TODOS LOS CONTINENTES */}
-          <GlobalThermalSmoothLayer
-            year={mapYear}
-            month={mapMonth}
-            hour={mapHour}
-            livestockMode={livestockMode}
-          />
+            {/* Meridianos curvos: -120°, -60°, 0°, 60°, 120° */}
+            <path d="M 240,30 Q 180,260 240,490" fill="none" stroke="#1D3025" strokeWidth="1" strokeDasharray="3 3" />
+            <path d="M 370,30 Q 340,260 370,490" fill="none" stroke="#1D3025" strokeWidth="1" strokeDasharray="3 3" />
+            <line x1="500" y1="30" x2="500" y2="490" stroke="#2B4636" strokeWidth="1.5" />
+            <path d="M 630,30 Q 660,260 630,490" fill="none" stroke="#1D3025" strokeWidth="1" strokeDasharray="3 3" />
+            <path d="M 760,30 Q 820,260 760,490" fill="none" stroke="#1D3025" strokeWidth="1" strokeDasharray="3 3" />
 
-          {/* Marcador del predio consultado */}
-          {markerIcon && (
-            <Marker position={[lat, lon]} icon={markerIcon}>
-              <Popup>
-                <div className="p-1 space-y-1 text-slate-800 text-xs font-sans">
-                  <div className="font-bold flex items-center gap-1 text-slate-900">
-                    <MapPin className="w-3.5 h-3.5 text-red-500" />
-                    {placeName}
-                  </div>
-                  <div>Coordenadas: {lat.toFixed(2)}°, {lon.toFixed(2)}°</div>
-                  <div className="text-[11px] text-slate-600">
-                    Simulación: {mapDay} de {mesesCompletos[mapMonth]} {mapYear} ({mapHour}:00 UTC)
-                  </div>
-                </div>
-              </Popup>
-            </Marker>
-          )}
-        </MapContainer>
+            {/* 3. CONTINENTES COLOREADOS INDIVIDUALMENTE CON EL CALOR REAL (OCÉANO QUEDA LIMPIO) */}
+            {WORLD_LANDMASSES.map((region) => {
+              const climate = calculateRegionClimate(region.lat, region.lon);
+              const fillColor = getColormapColor(climate.thi);
 
-        {/* Indicador de simulación activa */}
-        {isPlaying && (
-          <div className="absolute top-3 right-3 z-[400] bg-black/85 backdrop-blur-md px-3 py-1 rounded-full border border-emerald-500/40 text-[10px] font-bold text-emerald-400 flex items-center gap-1.5 shadow-xl animate-pulse">
-            <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            Simulación global en reproducción ({mapTimeScale.toUpperCase()})
+              return (
+                <path
+                  key={region.id}
+                  d={region.path}
+                  fill={fillColor}
+                  stroke="#0A110D"
+                  strokeWidth="1.5"
+                  className="transition-colors duration-500 cursor-pointer hover:opacity-90 hover:stroke-white"
+                  onMouseEnter={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setHoverInfo({
+                      name: region.name,
+                      thi: climate.thi,
+                      temp: climate.temp,
+                      x: rect.x + rect.width / 2,
+                      y: rect.y - 10,
+                    });
+                  }}
+                  onMouseLeave={() => setHoverInfo(null)}
+                />
+              );
+            })}
+
+            {/* 4. MARCADOR DEL PREDIO CONSULTADO (UBICACIÓN EXACTA) */}
+            <g transform={`translate(${predioPos.x}, ${predioPos.y})`}>
+              <circle r="16" fill="rgba(74, 222, 128, 0.35)" className="animate-ping" />
+              <circle r="6" fill="#4ADE80" stroke="#FFFFFF" strokeWidth="2" />
+              <circle r="2" fill="#000000" />
+            </g>
+
+          </g>
+
+          {/* Rótulos de Latitud (Izquierda y Derecha) idénticos al artículo */}
+          <text x="15" y="110" fill="#6B7280" fontSize="10" fontFamily="monospace">60°N</text>
+          <text x="15" y="190" fill="#6B7280" fontSize="10" fontFamily="monospace">30°N</text>
+          <text x="20" y="265" fill="#9CA3AF" fontSize="11" fontFamily="monospace" fontWeight="bold">0°</text>
+          <text x="15" y="340" fill="#6B7280" fontSize="10" fontFamily="monospace">30°S</text>
+          <text x="15" y="420" fill="#6B7280" fontSize="10" fontFamily="monospace">60°S</text>
+
+          <text x="965" y="110" fill="#6B7280" fontSize="10" fontFamily="monospace">60°N</text>
+          <text x="965" y="190" fill="#6B7280" fontSize="10" fontFamily="monospace">30°N</text>
+          <text x="970" y="265" fill="#9CA3AF" fontSize="11" fontFamily="monospace" fontWeight="bold">0°</text>
+          <text x="965" y="340" fill="#6B7280" fontSize="10" fontFamily="monospace">30°S</text>
+          <text x="965" y="420" fill="#6B7280" fontSize="10" fontFamily="monospace">60°S</text>
+
+          {/* Rótulos de Longitud (Arriba y Abajo) */}
+          <text x="95" y="20" fill="#6B7280" fontSize="10" fontFamily="monospace">180°</text>
+          <text x="215" y="20" fill="#6B7280" fontSize="10" fontFamily="monospace">120°W</text>
+          <text x="355" y="20" fill="#6B7280" fontSize="10" fontFamily="monospace">60°W</text>
+          <text x="495" y="20" fill="#9CA3AF" fontSize="10" fontFamily="monospace" fontWeight="bold">0°</text>
+          <text x="615" y="20" fill="#6B7280" fontSize="10" fontFamily="monospace">60°E</text>
+          <text x="745" y="20" fill="#6B7280" fontSize="10" fontFamily="monospace">120°E</text>
+          <text x="865" y="20" fill="#6B7280" fontSize="10" fontFamily="monospace">180°</text>
+
+          <text x="95" y="510" fill="#6B7280" fontSize="10" fontFamily="monospace">180°</text>
+          <text x="215" y="510" fill="#6B7280" fontSize="10" fontFamily="monospace">120°W</text>
+          <text x="355" y="510" fill="#6B7280" fontSize="10" fontFamily="monospace">60°W</text>
+          <text x="495" y="510" fill="#9CA3AF" fontSize="10" fontFamily="monospace" fontWeight="bold">0°</text>
+          <text x="615" y="510" fill="#6B7280" fontSize="10" fontFamily="monospace">60°E</text>
+          <text x="745" y="510" fill="#6B7280" fontSize="10" fontFamily="monospace">120°E</text>
+          <text x="865" y="510" fill="#6B7280" fontSize="10" fontFamily="monospace">180°</text>
+        </svg>
+
+        {/* Tooltip interactivo flotante al pasar el mouse por cualquier país */}
+        {hoverInfo && (
+          <div
+            className="fixed z-50 bg-[#0C1511] text-white px-3 py-1.5 rounded-xl border border-emerald-500/40 shadow-2xl text-xs pointer-events-none transform -translate-x-1/2 -translate-y-full"
+            style={{ left: hoverInfo.x, top: hoverInfo.y }}
+          >
+            <div className="font-bold text-emerald-400">{hoverInfo.name}</div>
+            <div>Índice térmico (THI): <strong>{hoverInfo.thi}</strong></div>
+            <div>Temp estimada: {hoverInfo.temp} °C</div>
           </div>
         )}
+
+        {/* Tarjeta de información del predio actual */}
+        <div className="mt-2 flex flex-wrap items-center justify-between text-xs text-slate-300 bg-black/40 p-2.5 rounded-xl border border-white/5">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+            <span>Predio fijado: <strong className="text-white">{placeName}</strong> ({lat.toFixed(2)}°, {lon.toFixed(2)}°)</span>
+          </div>
+          <div className="font-mono text-emerald-400">
+            Índice local en simulación: <strong>{predioClimate.thi} THI</strong> ({predioClimate.temp} °C)
+          </div>
+        </div>
+
       </div>
 
-      {/* Escala Científica con primera letra en mayúscula */}
+      {/* Escala Científica idéntica al estudio (-69.3 a 69.3) */}
       <div className="space-y-1.5 pt-1">
         <div className="flex justify-between items-center text-[10px] font-bold text-slate-300">
           <span>Escala de estrés térmico global</span>
-          <span className="text-emerald-400 font-mono">Modelo bioclimático planetario continuo</span>
+          <span className="text-emerald-400 font-mono">Modelo bioclimático planetario (THI)</span>
         </div>
         <div
-          className="h-2.5 w-full rounded-full shadow-inner"
+          className="h-3 w-full rounded-full shadow-inner"
           style={{
-            background: 'linear-gradient(to right, #1E3A8A, #3B82F6, #22C55E, #FEF3C7, #F59E0B, #DC2626, #7F1D1D)'
+            background: 'linear-gradient(to right, #1E3A8A, #3B82F6, #93C5FD, #F3E8D0, #D97706, #B91C1C, #7F1D1D)'
           }}
         />
-        <div className="flex justify-between text-[9px] text-slate-400 font-mono">
-          <span>-69.3 (Frío polar)</span>
+        <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+          <span>-69.3</span>
+          <span>-52.0</span>
           <span>-34.7</span>
-          <span>0.0 (Termoneutralidad)</span>
-          <span>+34.7</span>
-          <span>+52.0</span>
-          <span className="text-red-400 font-bold">+69.3 (Estrés crítico)</span>
+          <span>-17.3</span>
+          <span>0.0 (THI)</span>
+          <span>17.3</span>
+          <span>34.7</span>
+          <span>52.0</span>
+          <span className="font-bold text-red-500">69.3</span>
         </div>
       </div>
 

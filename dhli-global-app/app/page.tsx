@@ -17,7 +17,7 @@ const EarthGlobe = dynamic(() => import('../components/EarthGlobe'), { ssr: fals
 const FarmMap = dynamic(() => import('../components/FarmMap'), { ssr: false });
 const DepartmentHeatMap = dynamic(() => import('../components/DepartmentHeatMap'), { ssr: false });
 
-// DICCIONARIO COMPLETO DE TRADUCCIÓN REAL (ES, EN, PT)
+// DICCIONARIO COMPLETO DE TRADUCCIÓN REAL
 const DICTIONARY: Record<'es' | 'en' | 'pt', Record<string, string>> = {
   es: {
     app_title: 'Monitor global de estrés térmico bovino',
@@ -154,7 +154,6 @@ export default function HomePage() {
   const [lang, setLang] = useState<'es' | 'en' | 'pt'>('es');
   const [livestockMode, setLivestockMode] = useState<LivestockMode>('dairy');
 
-  // Función traductora
   const t = (key: string) => DICTIONARY[lang]?.[key] || key;
 
   // Modal de bienvenida al ingresar
@@ -444,6 +443,7 @@ export default function HomePage() {
     } catch {}
   };
 
+  // 1. HORAS (24h)
   const getHoursList = () => {
     return Array.from({ length: 24 }, (_, i) => {
       const peak = i >= 11 && i <= 16 ? (i === 13 || i === 14 ? 8 : 6) : i < 6 ? -5 : 0;
@@ -456,6 +456,7 @@ export default function HomePage() {
     });
   };
 
+  // 2. DÍAS (1 al 31)
   const getDaysList = () => {
     const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
     return Array.from({ length: daysInMonth }, (_, i) => ({
@@ -466,6 +467,7 @@ export default function HomePage() {
     }));
   };
 
+  // 3. MESES (Ene a Dic)
   const getMonthsList = () => {
     const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
     return meses.map((m, idx) => ({
@@ -476,20 +478,17 @@ export default function HomePage() {
     }));
   };
 
+  // 4. AÑOS: TODOS LOS AÑOS CONSECUTIVOS DE 1980 A 2100 (121 AÑOS)
   const getYearsList = () => {
-    const startYear = 1980;
-    const endYear = 2100;
-    const step = 5;
-    const yrs: number[] = [];
-    for (let y = startYear; y <= endYear; y += step) yrs.push(y);
-    if (!yrs.includes(selectedYear)) yrs.push(selectedYear);
-    yrs.sort((a, b) => a - b);
-    return yrs.map((y) => ({
-      label: y.toString(),
-      val: Math.round(result.indexVal - 5 + ((y - 2024) * 0.12)),
-      temp: +(temp + ((y - 2024) * 0.025)).toFixed(1),
-      raw: y
-    }));
+    return Array.from({ length: 121 }, (_, i) => {
+      const y = 1980 + i;
+      return {
+        label: y.toString(),
+        val: Math.round(result.indexVal - 5 + ((y - 2024) * 0.12)),
+        temp: +(temp + ((y - 2024) * 0.025)).toFixed(1),
+        raw: y,
+      };
+    });
   };
 
   const getChartData = () => {
@@ -522,7 +521,7 @@ export default function HomePage() {
   const mesesNombres = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
   const thresholdLineValue = livestockMode === 'dairy' ? 25 : 77;
 
-  // COLOR DEL GRÁFICO BASADO EN IMAGEN 2 (VERDE NEÓN EN LECHE, CÁLIDO EN CARNE)
+  // COLOR DEL GRÁFICO (VERDE NEÓN EN LECHE, CÁLIDO EN CARNE)
   const chartLineColor = livestockMode === 'dairy' ? '#4ADE80' : '#F59E0B';
 
   return (
@@ -533,7 +532,6 @@ export default function HomePage() {
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xl flex items-center justify-center p-4">
           <div className="bg-[#0C1410] rounded-3xl border border-emerald-500/30 shadow-2xl max-w-xl w-full p-8 text-center space-y-6">
             
-            {/* Selector de idioma al inicio */}
             <div className="flex justify-center items-center gap-2">
               <Languages className="w-4 h-4 text-emerald-400" />
               <div className="flex bg-black/60 p-1 rounded-xl text-xs font-semibold border border-white/10">
@@ -582,7 +580,6 @@ export default function HomePage() {
       <header className="sticky top-0 z-40 bg-[#060A08]/90 backdrop-blur-xl border-b border-white/10 px-4 md:px-8 py-3.5">
         <div className="max-w-7xl mx-auto flex flex-wrap justify-between items-center gap-4">
           
-          {/* TÍTULO GRANDE */}
           <div className="flex items-center gap-3">
             <span className="text-3xl">{livestockMode === 'dairy' ? '🥛' : '🥩'}</span>
             <div>
@@ -595,7 +592,6 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Selector Leche vs Carne */}
           <div className="flex bg-black/60 p-1.5 rounded-2xl border border-white/10">
             <button
               onClick={() => { setLivestockMode('dairy'); setUnitPrice(2200); }}
@@ -619,7 +615,6 @@ export default function HomePage() {
             </button>
           </div>
 
-          {/* Selector de idioma arriba + Manual */}
           <div className="flex items-center gap-2">
             <div className="flex bg-black/60 p-1 rounded-xl text-xs font-bold border border-white/10">
               {(['es', 'en', 'pt'] as const).map((l) => (
@@ -646,7 +641,7 @@ export default function HomePage() {
 
       <div className="max-w-7xl mx-auto p-4 md:p-8 space-y-6">
 
-        {/* HERO: CARRUSEL CON ANIMAL 3D MÁS GRANDE Y CON COLOR REACTIVO AL ÍNDICE */}
+        {/* HERO: CARRUSEL CON ANIMAL 3D MÁS GRANDE (h-56) Y COLOR REACTIVO */}
         <div className="relative rounded-3xl border border-white/10 p-6 md:p-8 bg-gradient-to-r from-emerald-950/20 via-[#0A120E] to-black shadow-2xl overflow-hidden">
           <div className="flex justify-between items-center mb-3">
             <div className="flex items-center gap-2">
@@ -692,7 +687,6 @@ export default function HomePage() {
               />
             </div>
 
-            {/* MODELO 3D MÁS GRANDE (h-56) CON BRILLO / AURA REACTIVA AL ÍNDICE TÉRMICO */}
             <div
               className="md:col-span-4 h-56 flex items-center justify-center relative cursor-grab active:cursor-grabbing transition-all duration-700"
               style={{
@@ -712,12 +706,12 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* DIVISIÓN DE 2 COLUMNAS (EXACTAMENTE COMO IMAGEN 1):
+        {/* DIVISIÓN EN 2 COLUMNAS (IMAGEN 1):
             IZQUIERDA: GLOBO / MAPA 3D
             DERECHA: PANEL DE CONTROL Y MÉTRICAS */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
-          {/* COLUMNA IZQUIERDA (7 COLS): GLOBO 3D / MAPA SATELITAL */}
+          {/* COLUMNA IZQUIERDA (7 COLS): GLOBO 3D */}
           <div className="lg:col-span-7 space-y-4">
             <div className="relative rounded-3xl overflow-hidden border border-emerald-500/20 bg-[#080E0C] shadow-2xl h-[520px]">
               {mapMode === 'globe' ? (
@@ -737,10 +731,10 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* COLUMNA DERECHA (5 COLS): CONTROLES Y MÉTRICAS AGRUPADAS (COMO IMAGEN 1) */}
+          {/* COLUMNA DERECHA (5 COLS): CONTROLES Y MÉTRICAS AGRUPADAS */}
           <div className="lg:col-span-5 space-y-4">
             
-            {/* 1. Buscador */}
+            {/* Buscador */}
             <div className="relative">
               <input
                 type="text"
@@ -770,7 +764,7 @@ export default function HomePage() {
               )}
             </div>
 
-            {/* 2. Botones de Acción */}
+            {/* Botones de Función */}
             <div className="grid grid-cols-4 gap-2">
               <button
                 onClick={handleGPS}
@@ -802,7 +796,7 @@ export default function HomePage() {
               </button>
             </div>
 
-            {/* 3. Botón Calculadora ROI ancho */}
+            {/* Botón Calculadora ROI */}
             <button
               onClick={() => setShowFinanceModal(true)}
               className="w-full py-2.5 bg-gradient-to-r from-amber-500/20 to-emerald-500/20 hover:from-amber-500/30 hover:to-emerald-500/30 text-white font-bold rounded-xl text-xs border border-amber-500/30 flex items-center justify-center gap-2 shadow-lg"
@@ -810,7 +804,6 @@ export default function HomePage() {
               <DollarSign className="w-4 h-4 text-amber-400" /> {t('roi_calc_btn')}
             </button>
 
-            {/* Coordenadas Manuales si se abren */}
             {showCoordsPanel && (
               <form onSubmit={handleManualCoordsSubmit} className="p-3 bg-[#0D1512] rounded-2xl border border-white/10 flex gap-2">
                 <input
@@ -835,7 +828,7 @@ export default function HomePage() {
               </form>
             )}
 
-            {/* 4. Selectores de Raza y Producción */}
+            {/* Selectores de Raza y Producción */}
             <div className="grid grid-cols-2 gap-3 text-xs">
               <div>
                 <label className="text-[11px] text-slate-400 font-semibold block mb-1">
@@ -889,7 +882,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* 5. Gran Tarjeta de Índice (Como Imagen 1) */}
+            {/* Gran Tarjeta de Índice */}
             <div className="p-5 rounded-3xl border border-emerald-500/30 bg-[#0C1511] shadow-xl flex items-center justify-between">
               <div>
                 <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest block">
@@ -917,7 +910,7 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* 6. Cuadrícula de Clima de 2x2 (Como Imagen 1) */}
+            {/* Cuadrícula de Clima de 2x2 */}
             <div className="grid grid-cols-2 gap-2 text-xs">
               <div className="p-3 bg-[#0D1512] rounded-2xl border border-white/5 space-y-0.5">
                 <span className="text-[10px] text-slate-400 block">{t('temp')}</span>
@@ -953,7 +946,7 @@ export default function HomePage() {
 
         </div>
 
-        {/* MÓDULO PREDICTIVO MULTIESCALA: GRÁFICA DE LÍNEA NEÓN (IMAGEN 2) */}
+        {/* MÓDULO PREDICTIVO MULTIESCALA: CON TODOS LOS AÑOS DE 1980 A 2100 */}
         <div className="bg-[#0A110D] p-6 rounded-3xl border border-emerald-500/20 shadow-2xl space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-3">
             <div>
@@ -978,12 +971,13 @@ export default function HomePage() {
             </div>
 
             <div className="flex flex-wrap items-center gap-2 text-xs">
+              {/* SELECTOR CON TODOS LOS AÑOS DE 1980 A 2100 (121 AÑOS) */}
               <select
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(Number(e.target.value))}
                 className="bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-white font-mono"
               >
-                {[2020, 2024, 2026, 2030, 2040, 2050, 2100].map((yr) => (
+                {Array.from({ length: 121 }, (_, i) => 1980 + i).map((yr) => (
                   <option key={yr} value={yr}>{yr}</option>
                 ))}
               </select>
@@ -1023,12 +1017,16 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Gráfico de línea neón continua */}
           <div className="h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={getChartData()} onClick={handleChartPointClick} className="cursor-pointer">
                 <CartesianGrid strokeDasharray="3 3" stroke="#16251E" />
-                <XAxis dataKey="label" stroke="#4ADE80" fontSize={11} interval={0} />
+                <XAxis 
+                  dataKey="label" 
+                  stroke="#4ADE80" 
+                  fontSize={11} 
+                  interval={drillLevel === 'year' ? 9 : 0} 
+                />
                 <YAxis domain={[0, livestockMode === 'dairy' ? 70 : 120]} stroke="#4ADE80" fontSize={11} />
                 <Tooltip
                   contentStyle={{ backgroundColor: '#09110D', borderColor: '#22C55E', borderRadius: '12px', fontSize: '12px', color: '#FFFFFF' }}
@@ -1054,7 +1052,7 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* MAPA REGIONAL SEGMENTADO POR DEPARTAMENTOS CON SIMULACIÓN ANIMADA */}
+        {/* MAPA CIENTÍFICO ROBINSON CON CALOR EXCLUSIVAMENTE SOBRE LA TIERRA */}
         <DepartmentHeatMap
           lat={lat}
           lon={lon}
@@ -1293,7 +1291,6 @@ export default function HomePage() {
               <span className="text-[11px] text-slate-500">Modelación bioclimática zootécnica de precisión</span>
             </div>
 
-            {/* Selector de idioma en el footer */}
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-slate-400 font-semibold">Idioma / Language:</span>
               <div className="flex bg-white/5 p-1 rounded-xl text-xs font-bold border border-white/10">
