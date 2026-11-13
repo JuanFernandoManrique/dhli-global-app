@@ -1,8 +1,8 @@
 'use client';
 import React, { useState, useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Polygon, Marker, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, GeoJSON, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { Globe, MapPin, Play, Pause } from 'lucide-react';
+import { Globe, MapPin, Play, Pause, Compass } from 'lucide-react';
 import { LivestockMode } from '../lib/dhli-calculator';
 
 interface DepartmentHeatMapProps {
@@ -17,42 +17,25 @@ interface DepartmentHeatMapProps {
   onTimeChange: (y: number, m: number, d: number, h: number) => void;
 }
 
-// SECTORIZACIÓN BIOCLIMÁTICA CONTINENTAL Y REGIONAL REAL (SOLO TIERRA FIRME)
-const WORLD_SECTORS: any[] = [
-  // 1. América del Sur
-  { id: 'sa_col_choc', name: 'Colombia (Costa Pacífica / Chocó)', lat: 5.5, lon: -77.0, baseDHLI: 42, baseHLI: 84, coords: [[2.0, -78.5], [7.5, -77.2], [8.0, -76.8], [4.0, -77.5]] },
-  { id: 'sa_col_and', name: 'Colombia (Altiplano Andino / Sabana)', lat: 4.8, lon: -74.0, baseDHLI: 20, baseHLI: 68, coords: [[3.5, -75.8], [7.0, -73.2], [6.5, -72.5], [3.0, -74.5]] },
-  { id: 'sa_col_car', name: 'Colombia (Caribe / Córdoba / Cesar)', lat: 9.5, lon: -74.5, baseDHLI: 46, baseHLI: 88, coords: [[7.8, -76.5], [11.8, -72.5], [10.5, -74.8], [8.2, -75.8]] },
-  { id: 'sa_col_lla', name: 'Colombia / Venezuela (Llanos Orientales)', lat: 5.0, lon: -69.0, baseDHLI: 38, baseHLI: 81, coords: [[3.0, -73.5], [7.5, -67.5], [6.0, -66.0], [2.5, -70.5]] },
-  { id: 'sa_amz', name: 'Amazonía (Brasil / Perú / Colombia)', lat: -3.5, lon: -62.0, baseDHLI: 48, baseHLI: 90, coords: [[2.0, -72.0], [2.0, -52.0], [-9.0, -50.0], [-10.0, -70.0]] },
-  { id: 'sa_br_pant', name: 'Brasil (Pantanal / Mato Grosso)', lat: -16.0, lon: -56.0, baseDHLI: 44, baseHLI: 86, coords: [[-10.0, -60.0], [-10.0, -50.0], [-22.0, -53.0], [-21.0, -61.0]] },
-  { id: 'sa_br_south', name: 'Brasil Sur (Paraná / Río Grande do Sul)', lat: -27.0, lon: -52.0, baseDHLI: 28, baseHLI: 72, coords: [[-22.0, -55.0], [-23.0, -48.0], [-32.0, -50.0], [-30.0, -57.0]] },
-  { id: 'sa_arg_pampa', name: 'Argentina (Pampa Húmeda / Rafaela)', lat: -33.0, lon: -62.0, baseDHLI: 32, baseHLI: 75, coords: [[-28.0, -65.0], [-29.0, -58.0], [-39.0, -60.0], [-37.0, -66.0]] },
-  { id: 'sa_arg_patag', name: 'Argentina (Patagonia Sur)', lat: -46.0, lon: -69.0, baseDHLI: 14, baseHLI: 58, coords: [[-40.0, -72.0], [-40.0, -64.0], [-54.0, -66.0], [-53.0, -72.0]] },
-
-  // 2. América del Norte y Centroamérica
-  { id: 'ca_mex_trop', name: 'México Sur / Centroamérica', lat: 16.0, lon: -92.0, baseDHLI: 40, baseHLI: 83, coords: [[14.0, -93.0], [20.0, -88.0], [18.0, -87.0], [13.0, -88.0]] },
-  { id: 'na_mex_north', name: 'México Norte / Sonora / Chihuahua', lat: 28.0, lon: -106.0, baseDHLI: 39, baseHLI: 82, coords: [[23.0, -110.0], [31.0, -104.0], [28.0, -100.0], [22.0, -104.0]] },
-  { id: 'na_usa_south', name: 'EE.UU. Sur (Texas / Florida)', lat: 30.0, lon: -92.0, baseDHLI: 36, baseHLI: 80, coords: [[26.0, -98.0], [33.0, -95.0], [32.0, -81.0], [25.0, -80.0]] },
-  { id: 'na_usa_corn', name: 'EE.UU. Centro (Corn Belt / Iowa)', lat: 41.0, lon: -93.0, baseDHLI: 27, baseHLI: 71, coords: [[37.0, -100.0], [45.0, -97.0], [44.0, -85.0], [36.0, -87.0]] },
-  { id: 'na_can_south', name: 'Canadá Sur / Grandes Lagos', lat: 49.0, lon: -95.0, baseDHLI: 18, baseHLI: 62, coords: [[45.0, -105.0], [53.0, -100.0], [50.0, -80.0], [44.0, -80.0]] },
-
-  // 3. Europa
-  { id: 'eu_med', name: 'Europa Mediterránea (España / Italia)', lat: 40.0, lon: 5.0, baseDHLI: 33, baseHLI: 76, coords: [[36.0, -9.0], [43.0, -2.0], [44.0, 15.0], [37.0, 15.0]] },
-  { id: 'eu_cent', name: 'Europa Central (Francia / Alemania)', lat: 49.0, lon: 7.0, baseDHLI: 22, baseHLI: 66, coords: [[44.0, -1.0], [53.0, 5.0], [52.0, 14.0], [45.0, 10.0]] },
-  { id: 'eu_north', name: 'Europa Norte / Escandinavia', lat: 60.0, lon: 15.0, baseDHLI: 14, baseHLI: 56, coords: [[55.0, 5.0], [66.0, 12.0], [65.0, 25.0], [56.0, 20.0]] },
-
-  // 4. África
-  { id: 'af_sahara', name: 'África Norte / Sahara', lat: 24.0, lon: 15.0, baseDHLI: 52, baseHLI: 95, coords: [[18.0, -12.0], [32.0, -5.0], [31.0, 32.0], [17.0, 30.0]] },
-  { id: 'af_equat', name: 'África Ecuatorial / Sahel', lat: 5.0, lon: 20.0, baseDHLI: 46, baseHLI: 89, coords: [[4.0, -5.0], [14.0, 0.0], [13.0, 35.0], [2.0, 30.0]] },
-  { id: 'af_south', name: 'África del Sur', lat: -27.0, lon: 25.0, baseDHLI: 29, baseHLI: 73, coords: [[-20.0, 16.0], [-21.0, 32.0], [-34.0, 28.0], [-33.0, 18.0]] },
-
-  // 5. Asia y Oceanía
-  { id: 'as_india', name: 'India / Sur de Asia', lat: 22.0, lon: 78.0, baseDHLI: 49, baseHLI: 92, coords: [[10.0, 72.0], [28.0, 70.0], [28.0, 88.0], [12.0, 85.0]] },
-  { id: 'as_china', name: 'China Este / Central', lat: 32.0, lon: 112.0, baseDHLI: 35, baseHLI: 78, coords: [[24.0, 105.0], [39.0, 110.0], [36.0, 122.0], [23.0, 118.0]] },
-  { id: 'oc_aus_north', name: 'Australia Norte (Trópico)', lat: -18.0, lon: 133.0, baseDHLI: 47, baseHLI: 90, coords: [[-12.0, 125.0], [-13.0, 145.0], [-24.0, 145.0], [-23.0, 120.0]] },
-  { id: 'oc_aus_south', name: 'Australia Sur / Victoria', lat: -34.0, lon: 138.0, baseDHLI: 26, baseHLI: 71, coords: [[-27.0, 128.0], [-28.0, 149.0], [-38.0, 148.0], [-37.0, 130.0]] }
-];
+// Función auxiliar para obtener el centro geográfico real de cada país
+function getFeatureCentroid(feature: any): [number, number] {
+  try {
+    let coords = feature.geometry.coordinates;
+    while (Array.isArray(coords[0]) && Array.isArray(coords[0][0])) {
+      coords = coords[0];
+    }
+    let sumLat = 0, sumLon = 0, count = 0;
+    const step = Math.max(1, Math.floor(coords.length / 15));
+    for (let i = 0; i < coords.length; i += step) {
+      sumLon += coords[i][0];
+      sumLat += coords[i][1];
+      count++;
+    }
+    return [sumLat / count, sumLon / count];
+  } catch {
+    return [0, 0];
+  }
+}
 
 export default function DepartmentHeatMap({
   lat,
@@ -66,14 +49,18 @@ export default function DepartmentHeatMap({
   onTimeChange,
 }: DepartmentHeatMapProps) {
   const [mounted, setMounted] = useState(false);
+  const [geoData, setGeoData] = useState<any>(null);
+  const [loadingGeo, setLoadingGeo] = useState(true);
+
+  // Escala para el reproductor animado (Hora, Día, Mes, Año)
   const [mapScale, setMapScale] = useState<'hour' | 'day' | 'month' | 'year'>('month');
   const [isPlaying, setIsPlaying] = useState(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Pin personalizado seguro en SSR y libre de errores de tipo en TypeScript
+  // Pin indicador para el predio
   const [customPin, setCustomPin] = useState<any>(null);
 
-  // Tooltip interactivo al pasar el cursor sobre cualquier sector
+  // Tooltip interactivo al pasar el cursor sobre cualquier país
   const [hoverData, setHoverData] = useState<{
     name: string;
     indexVal: number;
@@ -84,26 +71,45 @@ export default function DepartmentHeatMap({
     y: number;
   } | null>(null);
 
+  // Cargar las fronteras oficiales reales del mundo (Natural Earth GeoJSON)
   useEffect(() => {
     setMounted(true);
+
+    async function loadRealWorldBorders() {
+      try {
+        const res = await fetch(
+          'https://d2ad6b4ur7yvpq.cloudfront.net/naturalearth-3.3.0/ne_110m_admin_0_countries.geojson'
+        );
+        if (res.ok) {
+          const data = await res.json();
+          setGeoData(data);
+        }
+      } catch (err) {
+        console.error('Error cargando fronteras mundiales:', err);
+      } finally {
+        setLoadingGeo(false);
+      }
+    }
+
+    loadRealWorldBorders();
 
     if (typeof window !== 'undefined') {
       const pin = L.divIcon({
         className: 'custom-predio-pin',
         html: `
-          <div style="position: relative; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">
-            <div style="position: absolute; inset: 0; border-radius: 50%; background: ${livestockMode === 'dairy' ? 'rgba(74, 222, 128, 0.45)' : 'rgba(239, 68, 68, 0.45)'}; animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-            <div style="position: absolute; width: 14px; height: 14px; border-radius: 50%; background: ${livestockMode === 'dairy' ? '#4ADE80' : '#EF4444'}; border: 2.5px solid #FFFFFF; box-shadow: 0 0 10px rgba(0,0,0,0.8);"></div>
+          <div style="position: relative; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center;">
+            <div style="position: absolute; inset: 0; border-radius: 50%; background: ${livestockMode === 'dairy' ? 'rgba(74, 222, 128, 0.5)' : 'rgba(239, 68, 68, 0.5)'}; animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+            <div style="position: absolute; width: 14px; height: 14px; border-radius: 50%; background: ${livestockMode === 'dairy' ? '#4ADE80' : '#EF4444'}; border: 2.5px solid #FFFFFF; box-shadow: 0 0 12px rgba(0,0,0,0.9);"></div>
           </div>
         `,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
+        iconSize: [34, 34],
+        iconAnchor: [17, 17],
       });
       setCustomPin(pin);
     }
   }, [livestockMode]);
 
-  // Animación del reproductor sincronizada
+  // Reproductor de simulación (Timelapse interactivo)
   useEffect(() => {
     if (isPlaying) {
       timerRef.current = setInterval(() => {
@@ -120,7 +126,7 @@ export default function DepartmentHeatMap({
           const nextY = selectedYear >= 2060 ? 1980 : selectedYear + 2;
           onTimeChange(nextY, selectedMonth, selectedDay, selectedHour);
         }
-      }, 700);
+      }, 750);
     } else if (timerRef.current) {
       clearInterval(timerRef.current);
     }
@@ -131,13 +137,38 @@ export default function DepartmentHeatMap({
 
   if (!mounted) return <div className="h-96 w-full bg-[#0A110D] rounded-3xl animate-pulse" />;
 
-  // Factores temporales biofísicos
-  const hourDelta = selectedHour >= 11 && selectedHour <= 16 ? (selectedHour === 13 || selectedHour === 14 ? 8 : 6) : selectedHour < 6 ? -6 : 0;
-  const monthDelta = Math.sin(((selectedMonth - 3) / 12) * 2 * Math.PI) * 5;
-  const yearDelta = Math.max(0, (selectedYear - 2024) * 0.12);
+  // Factores astronómicos y bioclimáticos reales
+  const solarDeclination = -23.44 * Math.cos(((selectedMonth + 0.5) / 12) * 2 * Math.PI);
+  const solarNoonLon = (12 - selectedHour) * 15;
+  const warmingDelta = Math.max(0, (selectedYear - 2024) * 0.12);
 
-  // Colores oficiales según DHLI o HLI
-  const getSectorColor = (val: number) => {
+  // Cálculo individual para cada país según su posición geográfica real
+  const calculateCountryStress = (countryLat: number, countryLon: number) => {
+    const effectiveLat = countryLat - solarDeclination;
+    const latFactor = Math.cos((effectiveLat * Math.PI) / 180);
+
+    let lonDiff = Math.abs(countryLon - solarNoonLon);
+    if (lonDiff > 180) lonDiff = 360 - lonDiff;
+    const diurnal = Math.max(0, Math.cos((lonDiff * Math.PI) / 180));
+
+    let indexVal = 0;
+    if (livestockMode === 'dairy') {
+      indexVal = (latFactor * 38 - 8) + (diurnal * 22) + warmingDelta;
+      if (countryLat > 60 || countryLat < -55) indexVal -= 25; // Polos
+      indexVal = Math.max(0, Math.min(100, Math.round(indexVal)));
+    } else {
+      indexVal = (latFactor * 52 + 35) + (diurnal * 26) + warmingDelta;
+      if (countryLat > 60 || countryLat < -55) indexVal -= 30;
+      indexVal = Math.max(0, Math.min(130, Math.round(indexVal)));
+    }
+
+    const tempEst = +(latFactor * 30 - 2 + diurnal * 7 + warmingDelta * 0.3).toFixed(1);
+    const rhEst = Math.round(Math.max(30, Math.min(90, 75 - diurnal * 18)));
+
+    return { indexVal, tempEst, rhEst };
+  };
+
+  const getStressColor = (val: number) => {
     if (livestockMode === 'dairy') {
       if (val < 25) return '#10B981'; // Confort
       if (val < 50) return '#FBBF24'; // Leve
@@ -151,7 +182,7 @@ export default function DepartmentHeatMap({
     }
   };
 
-  const getCategoryName = (val: number) => {
+  const getCategoryText = (val: number) => {
     if (livestockMode === 'dairy') {
       if (val < 25) return 'Zona de confort';
       if (val < 50) return 'Estrés leve';
@@ -165,12 +196,64 @@ export default function DepartmentHeatMap({
     }
   };
 
+  // Estilo individual sobre la forma real de cada país
+  const styleCountryFeature = (feature: any) => {
+    const [cLat, cLon] = getFeatureCentroid(feature);
+    const { indexVal } = calculateCountryStress(cLat, cLon);
+    const color = getStressColor(indexVal);
+
+    return {
+      fillColor: color,
+      fillOpacity: 0.52,
+      color: '#4ADE80',
+      weight: 1,
+      opacity: 0.8,
+    };
+  };
+
+  const onEachCountryFeature = (feature: any, layer: any) => {
+    const countryName =
+      feature.properties?.name ||
+      feature.properties?.NAME ||
+      feature.properties?.ADMIN ||
+      feature.properties?.formal_en ||
+      'País';
+
+    const [cLat, cLon] = getFeatureCentroid(feature);
+    const { indexVal, tempEst, rhEst } = calculateCountryStress(cLat, cLon);
+    const category = getCategoryText(indexVal);
+
+    layer.on({
+      mouseover: (e: any) => {
+        const ev = e.originalEvent;
+        setHoverData({
+          name: countryName,
+          indexVal,
+          category,
+          temp: tempEst,
+          rh: rhEst,
+          x: ev.clientX,
+          y: ev.clientY,
+        });
+        layer.setStyle({ fillOpacity: 0.75, weight: 2, color: '#FFFFFF' });
+      },
+      mousemove: (e: any) => {
+        const ev = e.originalEvent;
+        setHoverData((prev) => (prev ? { ...prev, x: ev.clientX, y: ev.clientY } : null));
+      },
+      mouseout: () => {
+        setHoverData(null);
+        layer.setStyle({ fillOpacity: 0.52, weight: 1, color: '#4ADE80' });
+      },
+    });
+  };
+
   const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 
   return (
     <div className="bg-[#0A110D] rounded-3xl border border-emerald-500/20 p-5 space-y-4 shadow-2xl relative">
       
-      {/* Barra superior con controles y reproductor */}
+      {/* Cabecera de controles sincronizados */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-3">
         <div>
           <h3 className="text-sm font-bold text-white flex items-center gap-2">
@@ -179,10 +262,11 @@ export default function DepartmentHeatMap({
           </h3>
           <p className="text-[11px] text-emerald-400/80 font-mono">
             Sincronizado: {selectedDay} {meses[selectedMonth]} {selectedYear} &bull; {selectedHour < 10 ? `0${selectedHour}` : selectedHour}:00 UTC
+            {loadingGeo && <span className="ml-2 text-amber-400 animate-pulse">(Cargando fronteras...)</span>}
           </p>
         </div>
 
-        {/* Reproductor y botones Año, Mes, Día, Hora */}
+        {/* Reproductor y Botones de Escala (Hora, Día, Mes, Año) */}
         <div className="flex flex-wrap items-center gap-2">
           
           <button
@@ -211,10 +295,10 @@ export default function DepartmentHeatMap({
         </div>
       </div>
 
-      {/* Visor Satelital con Sectores Continentales Reales */}
+      {/* Visor con Fronteras Reales (Sin cuadros recortados y sin calor en el océano) */}
       <div className="relative h-96 w-full rounded-2xl overflow-hidden border border-emerald-500/20 bg-slate-950">
         <MapContainer
-          center={[12, -20]}
+          center={[14, 0]}
           zoom={2.2}
           minZoom={1.8}
           maxZoom={9}
@@ -222,66 +306,30 @@ export default function DepartmentHeatMap({
           scrollWheelZoom={true}
           className="w-full h-full z-10"
         >
-          {/* Base satelital mundial real */}
+          {/* Base satelital limpia */}
           <TileLayer
             attribution="&copy; Esri World Imagery"
             url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
           />
 
-          <TileLayer
-            attribution=""
-            url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
-          />
+          {/* CAPA VECTORIAL CON LAS FORMAS GEOGRÁFICAS REALES DE CADA PAÍS */}
+          {geoData && (
+            <GeoJSON
+              key={`${selectedYear}-${selectedMonth}-${selectedDay}-${selectedHour}-${livestockMode}`}
+              data={geoData}
+              style={styleCountryFeature}
+              onEachFeature={onEachCountryFeature}
+            />
+          )}
 
-          {/* POLÍGONOS SECTORIZADOS EXCLUSIVAMENTE SOBRE CADA REGIÓN Y PAÍS */}
-          {WORLD_SECTORS.map((sec) => {
-            const baseVal = livestockMode === 'dairy' ? sec.baseDHLI : sec.baseHLI;
-            const currentVal = Math.round(baseVal + hourDelta + monthDelta + yearDelta);
-            const fillColor = getSectorColor(currentVal);
-            const category = getCategoryName(currentVal);
-
-            return (
-              <Polygon
-                key={`${sec.id}-${selectedYear}-${selectedMonth}-${selectedDay}-${selectedHour}`}
-                positions={sec.coords as any}
-                pathOptions={{
-                  fillColor: fillColor,
-                  fillOpacity: 0.55,
-                  color: fillColor,
-                  weight: 1.5,
-                  dashArray: '3',
-                }}
-                eventHandlers={{
-                  mouseover: (e) => {
-                    const rect = e.originalEvent;
-                    setHoverData({
-                      name: sec.name,
-                      indexVal: currentVal,
-                      category,
-                      temp: Math.round(20 + (currentVal * 0.35)),
-                      rh: 65,
-                      x: rect.clientX,
-                      y: rect.clientY,
-                    });
-                  },
-                  mousemove: (e) => {
-                    const rect = e.originalEvent;
-                    setHoverData((prev) => (prev ? { ...prev, x: rect.clientX, y: rect.clientY } : null));
-                  },
-                  mouseout: () => setHoverData(null),
-                }}
-              />
-            );
-          })}
-
-          {/* Marcador del predio seguro con 'as any' para TypeScript */}
+          {/* Marcador del predio consultado */}
           {customPin && <Marker position={[lat, lon]} icon={customPin as any} />}
         </MapContainer>
 
-        {/* TOOLTIP FLOTANTE QUE INDICA EL VALOR DEL ÍNDICE AL PASAR EL CURSOR */}
+        {/* TOOLTIP DINÁMICO AL PASAR EL CURSOR SOBRE CUALQUIER PAÍS */}
         {hoverData && (
           <div
-            className="fixed z-[9999] bg-[#0C1511] text-white p-3 rounded-2xl border border-emerald-500/40 shadow-2xl text-xs pointer-events-none transform -translate-x-1/2 -translate-y-full space-y-1"
+            className="fixed z-[9999] bg-[#0C1511] text-white p-3 rounded-2xl border border-emerald-500/40 shadow-2xl text-xs pointer-events-none transform -translate-x-1/2 -translate-y-full space-y-1 backdrop-blur-md"
             style={{ left: hoverData.x, top: hoverData.y - 12 }}
           >
             <div className="font-bold text-emerald-400 flex items-center gap-1">
@@ -291,17 +339,17 @@ export default function DepartmentHeatMap({
               {livestockMode === 'dairy' ? 'DHLI' : 'HLI'}: {hoverData.indexVal} ({hoverData.category})
             </div>
             <div className="text-[11px] text-slate-400 border-t border-white/10 pt-1">
-              Temp aprox: {hoverData.temp} °C | Humedad: {hoverData.rh}%
+              Temp estimada: {hoverData.temp} °C | Humedad: {hoverData.rh}%
             </div>
           </div>
         )}
       </div>
 
-      {/* Escala oficial DHLI o HLI */}
+      {/* Escala oficial */}
       <div className="space-y-1.5 pt-1">
         <div className="flex justify-between items-center text-[10px] font-bold text-slate-300">
           <span>Escala de estrés térmico global ({livestockMode === 'dairy' ? 'DHLI: 0 - 100' : 'HLI: 0 - 130'})</span>
-          <span className="text-emerald-400 font-mono">Pasa el cursor sobre cualquier sector continental</span>
+          <span className="text-emerald-400 font-mono">Pasa el cursor sobre cualquier país para ver su índice</span>
         </div>
         <div
           className="h-2.5 w-full rounded-full shadow-inner"
