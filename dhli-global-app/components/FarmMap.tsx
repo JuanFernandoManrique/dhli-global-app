@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, LayersControl, Circle, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 
@@ -10,11 +10,21 @@ interface FarmMapProps {
   heatLevel?: number;
 }
 
-function ChangeView({ center }: { center: [number, number] }) {
+// Controlador inteligente que solo centra la cámara cuando las coordenadas realmente cambian
+function SmartCenterView({ lat, lon }: { lat: number; lon: number }) {
   const map = useMap();
+  const lastCoordsRef = useRef<[number, number]>([lat, lon]);
+
   useEffect(() => {
-    map.flyTo(center, 16, { duration: 1.5 });
-  }, [center, map]);
+    const [prevLat, prevLon] = lastCoordsRef.current;
+    const distance = Math.hypot(prevLat - lat, prevLon - lon);
+    // Solo vuela al punto si cambió significativamente (nueva búsqueda o clic)
+    if (distance > 0.0001) {
+      map.flyTo([lat, lon], map.getZoom(), { duration: 1.2 });
+      lastCoordsRef.current = [lat, lon];
+    }
+  }, [lat, lon, map]);
+
   return null;
 }
 
@@ -45,63 +55,50 @@ export default function FarmMap({ lat, lon, onLocationChange, heatLevel = 45 }: 
   const heatColor = heatLevel < 25 ? '#10B981' : heatLevel < 50 ? '#FBBF24' : heatLevel < 75 ? '#F97316' : '#EF4444';
 
   return (
-    <div className="relative w-full h-[480px] rounded-3xl overflow-hidden shadow-2xl border border-slate-800 bg-slate-950 z-10">
+    <div className="relative w-full h-full min-h-[520px] rounded-3xl overflow-hidden shadow-2xl border border-emerald-500/20 bg-slate-950">
       <MapContainer
         center={[lat, lon]}
         zoom={16}
-        maxZoom={22}
+        maxZoom={21}
         scrollWheelZoom={true}
         className="w-full h-full"
       >
         <LayersControl position="topright">
-          <LayersControl.BaseLayer checked name="Google satélite (Híbrido HD)">
+          <LayersControl.BaseLayer checked name="Satélite híbrido HD">
             <TileLayer
               attribution="&copy; Google Maps Satelital"
               url="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"
               maxNativeZoom={20}
-              maxZoom={22}
+              maxZoom={21}
             />
           </LayersControl.BaseLayer>
 
-          <LayersControl.BaseLayer name="Google satélite (Puro)">
+          <LayersControl.BaseLayer name="Satélite puro">
             <TileLayer
               attribution="&copy; Google Maps Satelital"
               url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
               maxNativeZoom={20}
-              maxZoom={22}
+              maxZoom={21}
             />
           </LayersControl.BaseLayer>
 
-          {/* DESMARCADO POR DEFECTO: El usuario decide cuándo encender la capa de calor */}
-          <LayersControl.Overlay name="Capa térmica de estrés">
-            <>
-              <Circle
-                center={[lat, lon]}
-                radius={900}
-                pathOptions={{ color: heatColor, fillColor: heatColor, fillOpacity: 0.16, weight: 1.5, dashArray: '4, 8' }}
-              />
-              <Circle
-                center={[lat, lon]}
-                radius={450}
-                pathOptions={{ color: heatColor, fillColor: heatColor, fillOpacity: 0.25, weight: 2 }}
-              />
-              <Circle
-                center={[lat, lon]}
-                radius={180}
-                pathOptions={{ color: heatColor, fillColor: heatColor, fillOpacity: 0.38, weight: 3 }}
-              />
-            </>
+          <LayersControl.Overlay checked name="Círculo térmico de predio">
+            <Circle
+              center={[lat, lon]}
+              radius={350}
+              pathOptions={{ color: heatColor, fillColor: heatColor, fillOpacity: 0.28, weight: 2 }}
+            />
           </LayersControl.Overlay>
         </LayersControl>
 
-        <ChangeView center={[lat, lon]} />
+        <SmartCenterView lat={lat} lon={lon} />
         <MapClickHandler onLocationChange={onLocationChange} />
         {icon && <Marker position={[lat, lon]} icon={icon} />}
       </MapContainer>
 
-      <div className="absolute top-4 left-4 z-[400] bg-black/80 backdrop-blur-md px-4 py-2 rounded-xl text-white text-xs border border-white/10 pointer-events-none flex items-center gap-2">
+      <div className="absolute top-4 left-4 z-[400] bg-black/85 backdrop-blur-md px-3.5 py-1.5 rounded-xl text-white text-xs border border-white/10 pointer-events-none flex items-center gap-2">
         <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-        Satélite de alta resolución: haz clic en cualquier potrero para reubicar el pin
+        Haz clic en cualquier potrero cercano para mover el pin o arrastra para explorar
       </div>
     </div>
   );
